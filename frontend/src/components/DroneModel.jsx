@@ -1,11 +1,12 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Cylinder, Box, Sphere } from '@react-three/drei';
+import { Cylinder, Box, Sphere, RoundedBox, Torus } from '@react-three/drei';
 import * as THREE from 'three';
 
 const DroneModel = ({ position, rotation, isFlying }) => {
   const droneRef = useRef();
   const propellerRefs = useRef([]);
+  const glowRef = useRef();
   
   // Convert position coordinates for 3D space
   const dronePosition = [
@@ -25,115 +26,213 @@ const DroneModel = ({ position, rotation, isFlying }) => {
   useFrame((state) => {
     if (propellerRefs.current) {
       propellerRefs.current.forEach((propeller) => {
-        if (propeller && isFlying) {
-          propeller.rotation.y += 0.5; // Fast rotation when flying
+        if (propeller) {
+          propeller.rotation.y += isFlying ? 0.8 : 0.05; // Fast rotation when flying
         }
       });
     }
     
     // Add subtle hover animation when flying
     if (droneRef.current && isFlying) {
-      droneRef.current.position.y += Math.sin(state.clock.elapsedTime * 2) * 0.02;
+      droneRef.current.position.y += Math.sin(state.clock.elapsedTime * 3) * 0.015;
+    }
+    
+    // Animate glow
+    if (glowRef.current && isFlying) {
+      glowRef.current.material.opacity = 0.3 + Math.sin(state.clock.elapsedTime * 2) * 0.2;
     }
   });
 
   return (
     <group ref={droneRef} position={dronePosition} rotation={droneRotation}>
-      {/* Main Body */}
-      <Box args={[1.5, 0.3, 1.5]} position={[0, 0, 0]}>
-        <meshStandardMaterial 
-          color={isFlying ? "#3b82f6" : "#64748b"} 
-          metalness={0.7}
-          roughness={0.3}
-        />
-      </Box>
+      {/* Bottom glow effect when flying */}
+      {isFlying && (
+        <Torus 
+          ref={glowRef}
+          args={[1.5, 0.3, 16, 32]} 
+          position={[0, -0.5, 0]} 
+          rotation={[Math.PI / 2, 0, 0]}
+        >
+          <meshBasicMaterial 
+            color="#3b82f6" 
+            transparent
+            opacity={0.4}
+          />
+        </Torus>
+      )}
       
-      {/* Center Hub */}
-      <Cylinder args={[0.4, 0.4, 0.2]} position={[0, 0.1, 0]}>
+      {/* Main Body - Sleeker design */}
+      <RoundedBox args={[1.8, 0.25, 1.8]} radius={0.05} position={[0, 0, 0]}>
         <meshStandardMaterial 
-          color="#1e293b" 
+          color={isFlying ? "#2563eb" : "#475569"} 
           metalness={0.8}
           roughness={0.2}
+          emissive={isFlying ? "#1e40af" : "#000000"}
+          emissiveIntensity={isFlying ? 0.3 : 0}
+        />
+      </RoundedBox>
+      
+      {/* Top detail panel */}
+      <RoundedBox args={[1.2, 0.08, 1.2]} radius={0.02} position={[0, 0.17, 0]}>
+        <meshStandardMaterial 
+          color={isFlying ? "#1e3a8a" : "#334155"} 
+          metalness={0.9}
+          roughness={0.1}
+        />
+      </RoundedBox>
+      
+      {/* Center Hub - More prominent */}
+      <Cylinder args={[0.45, 0.5, 0.25]} position={[0, 0.13, 0]}>
+        <meshStandardMaterial 
+          color="#0f172a" 
+          metalness={0.9}
+          roughness={0.1}
         />
       </Cylinder>
       
-      {/* Arms */}
+      {/* Top antenna */}
+      <Cylinder args={[0.02, 0.02, 0.4]} position={[0, 0.45, 0]}>
+        <meshStandardMaterial color="#64748b" metalness={0.8} />
+      </Cylinder>
+      <Sphere args={[0.05]} position={[0, 0.65, 0]}>
+        <meshStandardMaterial 
+          color={isFlying ? "#ef4444" : "#991b1b"}
+          emissive={isFlying ? "#ef4444" : "#000000"}
+          emissiveIntensity={isFlying ? 0.8 : 0}
+        />
+      </Sphere>
+      
+      {/* Arms and Motors */}
       {[
-        [0.8, 0, 0.8],   // Front Right
-        [-0.8, 0, 0.8],  // Front Left
-        [0.8, 0, -0.8],  // Back Right
-        [-0.8, 0, -0.8]  // Back Left
-      ].map((pos, index) => (
+        { pos: [0.9, 0, 0.9], color: '#ef4444' },   // Front Right - Red
+        { pos: [-0.9, 0, 0.9], color: '#10b981' },  // Front Left - Green
+        { pos: [0.9, 0, -0.9], color: '#f59e0b' },  // Back Right - Orange
+        { pos: [-0.9, 0, -0.9], color: '#3b82f6' }  // Back Left - Blue
+      ].map((arm, index) => (
         <group key={index}>
-          {/* Arm */}
-          <Box args={[0.6, 0.1, 0.1]} position={pos}>
-            <meshStandardMaterial color="#475569" metalness={0.6} roughness={0.4} />
-          </Box>
+          {/* Arm - Carbon fiber look */}
+          <RoundedBox args={[0.7, 0.12, 0.12]} radius={0.02} position={arm.pos}>
+            <meshStandardMaterial 
+              color="#1e293b" 
+              metalness={0.7} 
+              roughness={0.3}
+            />
+          </RoundedBox>
           
-          {/* Motor */}
-          <Cylinder args={[0.15, 0.15, 0.3]} position={[pos[0], pos[1] + 0.15, pos[2]]}>
-            <meshStandardMaterial color="#1e293b" metalness={0.8} roughness={0.2} />
+          {/* Motor housing */}
+          <Cylinder args={[0.18, 0.22, 0.35]} position={[arm.pos[0], arm.pos[1] + 0.18, arm.pos[2]]}>
+            <meshStandardMaterial 
+              color="#0f172a" 
+              metalness={0.9} 
+              roughness={0.1}
+            />
           </Cylinder>
           
-          {/* Propeller */}
+          {/* Motor top cap */}
+          <Cylinder args={[0.15, 0.15, 0.05]} position={[arm.pos[0], arm.pos[1] + 0.38, arm.pos[2]]}>
+            <meshStandardMaterial 
+              color={arm.color}
+              metalness={0.8}
+              emissive={isFlying ? arm.color : "#000000"}
+              emissiveIntensity={isFlying ? 0.5 : 0}
+            />
+          </Cylinder>
+          
+          {/* Propeller - More realistic */}
           <group 
             ref={(el) => (propellerRefs.current[index] = el)}
-            position={[pos[0], pos[1] + 0.35, pos[2]]}
+            position={[arm.pos[0], arm.pos[1] + 0.42, arm.pos[2]]}
           >
-            <Box args={[1.2, 0.02, 0.1]}>
+            {/* Propeller blades */}
+            <Box args={[1.4, 0.03, 0.15]} position={[0, 0, 0]}>
               <meshStandardMaterial 
-                color={isFlying ? "#10b981" : "#6b7280"} 
+                color={isFlying ? "#cbd5e1" : "#64748b"} 
                 transparent
-                opacity={isFlying ? 0.7 : 1}
+                opacity={isFlying ? 0.6 : 0.9}
+                metalness={0.6}
+                roughness={0.3}
               />
             </Box>
-            <Box args={[0.1, 0.02, 1.2]}>
+            <Box args={[0.15, 0.03, 1.4]} position={[0, 0, 0]}>
               <meshStandardMaterial 
-                color={isFlying ? "#10b981" : "#6b7280"} 
+                color={isFlying ? "#cbd5e1" : "#64748b"} 
                 transparent
-                opacity={isFlying ? 0.7 : 1}
+                opacity={isFlying ? 0.6 : 0.9}
+                metalness={0.6}
+                roughness={0.3}
               />
             </Box>
+            {/* Center hub */}
+            <Cylinder args={[0.08, 0.08, 0.06]}>
+              <meshStandardMaterial color="#1e293b" metalness={0.9} />
+            </Cylinder>
           </group>
         </group>
       ))}
       
-      {/* Landing Gear */}
+      {/* Landing Gear - Only when not flying */}
       {!isFlying && [
-        [0.5, -0.3, 0.5],
-        [-0.5, -0.3, 0.5],
-        [0.5, -0.3, -0.5],
-        [-0.5, -0.3, -0.5]
+        [0.6, -0.35, 0.6],
+        [-0.6, -0.35, 0.6],
+        [0.6, -0.35, -0.6],
+        [-0.6, -0.35, -0.6]
       ].map((pos, index) => (
-        <Cylinder key={index} args={[0.03, 0.03, 0.4]} position={pos}>
-          <meshStandardMaterial color="#374151" />
-        </Cylinder>
+        <group key={`landing-${index}`}>
+          <Cylinder args={[0.04, 0.04, 0.5]} position={pos}>
+            <meshStandardMaterial color="#475569" metalness={0.7} />
+          </Cylinder>
+          {/* Landing foot */}
+          <Sphere args={[0.06]} position={[pos[0], pos[1] - 0.25, pos[2]]}>
+            <meshStandardMaterial color="#334155" metalness={0.6} />
+          </Sphere>
+        </group>
       ))}
       
-      {/* LED Lights */}
-      <Sphere args={[0.05]} position={[0.7, 0.1, 0.7]}>
+      {/* Enhanced LED Lights - Navigation lights */}
+      <Sphere args={[0.08]} position={[0.8, 0.15, 0.8]}>
         <meshStandardMaterial 
-          color={isFlying ? "#ef4444" : "#dc2626"} 
-          emissive={isFlying ? "#ef4444" : "#000000"}
-          emissiveIntensity={isFlying ? 0.5 : 0}
+          color="#ef4444" 
+          emissive="#ef4444"
+          emissiveIntensity={isFlying ? 1.0 : 0.2}
+          metalness={0.8}
         />
       </Sphere>
-      <Sphere args={[0.05]} position={[-0.7, 0.1, 0.7]}>
+      <Sphere args={[0.08]} position={[-0.8, 0.15, 0.8]}>
         <meshStandardMaterial 
-          color={isFlying ? "#10b981" : "#059669"} 
-          emissive={isFlying ? "#10b981" : "#000000"}
-          emissiveIntensity={isFlying ? 0.5 : 0}
+          color="#10b981" 
+          emissive="#10b981"
+          emissiveIntensity={isFlying ? 1.0 : 0.2}
+          metalness={0.8}
         />
       </Sphere>
       
-      {/* Camera Gimbal */}
-      <group position={[0, -0.2, 0.6]}>
-        <Sphere args={[0.2]}>
-          <meshStandardMaterial color="#1f2937" metalness={0.8} roughness={0.2} />
-        </Sphere>
-        <Box args={[0.3, 0.1, 0.15]} position={[0, 0, 0.15]}>
-          <meshStandardMaterial color="#111827" />
-        </Box>
+      {/* Status LED on top */}
+      <Sphere args={[0.06]} position={[0, 0.2, 0]}>
+        <meshStandardMaterial 
+          color={isFlying ? "#3b82f6" : "#64748b"} 
+          emissive={isFlying ? "#3b82f6" : "#000000"}
+          emissiveIntensity={isFlying ? 0.8 : 0}
+        />
+      </Sphere>
+      
+      {/* Camera Gimbal - More detailed */}
+      <group position={[0, -0.15, 0.7]}>
+        {/* Gimbal mount */}
+        <Cylinder args={[0.08, 0.08, 0.1]} rotation={[Math.PI / 2, 0, 0]}>
+          <meshStandardMaterial color="#1e293b" metalness={0.9} />
+        </Cylinder>
+        {/* Camera body */}
+        <RoundedBox args={[0.25, 0.2, 0.25]} radius={0.03} position={[0, 0, 0.15]}>
+          <meshStandardMaterial color="#0f172a" metalness={0.8} roughness={0.2} />
+        </RoundedBox>
+        {/* Camera lens */}
+        <Cylinder args={[0.08, 0.08, 0.1]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.3]}>
+          <meshStandardMaterial color="#1e293b" metalness={0.9} roughness={0.1} />
+        </Cylinder>
+        {/* Lens glass */}
+        <Cylinder args={[0.06, 0.06, 0.02]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.35]}>
+          <meshStandardMaterial color="#1e40af" metalness={1.0} roughness={0} transparent opacity={0.8} />
+        </Cylinder>
       </group>
     </group>
   );

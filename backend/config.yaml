@@ -1,0 +1,50 @@
+# Gesture Detection System Configuration
+
+# Hand Detection Settings
+hand_detection:
+  min_detection_confidence: 0.8
+  min_tracking_confidence: 0.7
+  model_complexity: 1  # 0=lite, 1=full (more accurate)
+  
+# Gesture Classification Settings
+gesture_classification:
+  min_confidence: 0.7
+  
+# Temporal Smoothing Settings
+temporal_smoothing:
+  consistency_frames: 5  # Frames needed for consistent gesture
+  cooldown_time: 0.5  # Minimum seconds between gesture changes
+  max_history: 30  # Maximum frames to keep in history
+  
+# Visualization Settings
+visualization:
+  enable: true
+  draw_connections: true
+  show_confidence: true
+  show_fps: true
+  
+# Sensitivity Presets
+sensitivity:
+  low:  # Very stable, slower response
+    min_confidence: 0.8
+    consistency_frames: 8
+    cooldown_time: 1.0
+  medium:  # Balanced (default)
+    min_confidence: 0.7
+    consistency_frames: 5
+    cooldown_time: 0.5
+  high:  # More responsive, less stable
+    min_confidence: 0.6
+    consistency_frames: 3
+    cooldown_time: 0.3
+    
+# Performance Settings
+performance:
+  target_fps: 30
+  detection_timeout: 2.0  # Seconds before resetting on no detection
+  
+# Drone Control Settings
+drone_control:
+  command_repeat_interval: 0.1  # Send commands every 100ms
+  emergency_stop_priority: true
+  require_gesture_confirmation: true
