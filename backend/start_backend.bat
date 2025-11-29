@@ -4,8 +4,8 @@ echo.
 
 REM Check if virtual environment exists
 if not exist "myenv" (
-    echo Creating Python virtual environment...
-    python -m venv myenv
+    echo Creating Python virtual environment with Python 3.11...
+    py -3.11 -m venv myenv
 )
 
 echo Activating virtual environment...
