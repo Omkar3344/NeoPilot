@@ -164,6 +164,7 @@ function App() {
   const [realisticBackground, setRealisticBackground] = useState(false);
   
   const wsRef = useRef(null);
+  const pressedKeysRef = useRef(new Set());
 
   // WebSocket connection
   useEffect(() => {
@@ -224,6 +225,138 @@ function App() {
       if (wsRef.current) {
         wsRef.current.close();
       }
+    };
+  }, []);
+
+  // Send keyboard command to backend
+  const sendKeyboardCommand = async (command) => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/drone/command', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ command }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Update drone data if status is returned
+        if (data.position) {
+          setDroneData(data);
+        }
+      } else {
+        const error = await response.json();
+        console.error('Failed to execute command:', error);
+      }
+    } catch (error) {
+      console.error('Error sending keyboard command:', error);
+    }
+  };
+
+  // Stop movement in a specific direction
+  const stopMovement = async (direction) => {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/drone/stop/${direction}`, {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.position) {
+          setDroneData(data);
+        }
+      }
+    } catch (error) {
+      console.error('Error stopping movement:', error);
+    }
+  };
+
+  // Keyboard controls
+  useEffect(() => {
+    const keyMap = {
+      'w': 'go_forward',
+      'W': 'go_forward',
+      'ArrowUp': 'go_forward',
+      's': 'back',
+      'S': 'back',
+      'ArrowDown': 'back',
+      'a': 'left',
+      'A': 'left',
+      'ArrowLeft': 'left',
+      'd': 'right',
+      'D': 'right',
+      'ArrowRight': 'right',
+      ' ': 'stop', // Space key
+      'Space': 'stop', // Space code
+      'z': 'up',
+      'Z': 'up',
+      'x': 'down',
+      'X': 'down',
+      'l': 'land',
+      'L': 'land',
+    };
+
+    const handleKeyDown = (event) => {
+      const key = event.key;
+      const code = event.code;
+      
+      // Skip if key is already pressed (prevent repeat)
+      if (pressedKeysRef.current.has(key) || pressedKeysRef.current.has(code)) {
+        return;
+      }
+
+      // Map key to command (check code first for special keys like Space, Shift)
+      let command = null;
+      if (keyMap[code]) {
+        command = keyMap[code];
+      } else if (keyMap[key]) {
+        command = keyMap[key];
+      }
+
+      if (command) {
+        // Prevent default browser behavior for these keys
+        event.preventDefault();
+        
+        // Add key to pressed set
+        pressedKeysRef.current.add(key);
+        pressedKeysRef.current.add(code);
+
+        // Send command (starts continuous movement for movement commands)
+        sendKeyboardCommand(command);
+      }
+    };
+
+    const handleKeyUp = (event) => {
+      const key = event.key;
+      const code = event.code;
+      
+      // Map key to command
+      let command = null;
+      if (keyMap[code]) {
+        command = keyMap[code];
+      } else if (keyMap[key]) {
+        command = keyMap[key];
+      }
+
+      // Stop movement for movement commands (not for stop/land)
+      if (command && ['go_forward', 'back', 'left', 'right', 'up', 'down'].includes(command)) {
+        stopMovement(command);
+      }
+      
+      // Remove key from pressed set
+      pressedKeysRef.current.delete(key);
+      pressedKeysRef.current.delete(code);
+    };
+
+    // Add event listeners
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
 

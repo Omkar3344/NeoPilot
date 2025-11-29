@@ -102,48 +102,6 @@ const TelemetryPanel = ({ droneData }) => {
         </motion.div>
       </div>
 
-      {/* Current Continuous Gesture */}
-      <AnimatePresence>
-        {droneData.current_gesture && droneData.is_flying && (
-          <motion.div 
-            className="mb-6"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            <motion.div 
-              className="flex items-center space-x-3 p-4 rounded-lg border bg-blue-500/10 border-blue-500/30 text-blue-400"
-              animate={{ 
-                opacity: [0.8, 1, 0.8],
-                scale: [1, 1.02, 1]
-              }}
-              transition={{ 
-                duration: 2, 
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-            >
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ 
-                  duration: 2, 
-                  repeat: Infinity,
-                  ease: "linear"
-                }}
-              >
-                <RotateCw className="h-5 w-5" />
-              </motion.div>
-              <div>
-                <div className="font-semibold text-sm">CONTINUOUS MOVEMENT</div>
-                <div className="text-xs opacity-90">
-                  {droneData.current_gesture.toUpperCase().replace('_', ' ')}
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Telemetry Grid */}
       <div className="space-y-4 mb-6">
@@ -255,33 +213,6 @@ const TelemetryPanel = ({ droneData }) => {
           </div>
         </div>
 
-        {/* Velocity */}
-        <div className="glass-panel p-4">
-          <div className="flex items-center space-x-2 mb-3">
-            <TrendingUp className="h-4 w-4 text-green-400" />
-            <span className="text-slate-300 font-medium">Velocity (m/s)</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-sm">
-            <div className="text-center p-2 bg-slate-700/50 rounded">
-              <div className="text-slate-400">X</div>
-              <div className="text-blue-400 font-mono">
-                {droneData.velocity.x.toFixed(2)}
-              </div>
-            </div>
-            <div className="text-center p-2 bg-slate-700/50 rounded">
-              <div className="text-slate-400">Y</div>
-              <div className="text-green-400 font-mono">
-                {droneData.velocity.y.toFixed(2)}
-              </div>
-            </div>
-            <div className="text-center p-2 bg-slate-700/50 rounded">
-              <div className="text-slate-400">Z</div>
-              <div className="text-purple-400 font-mono">
-                {droneData.velocity.z.toFixed(2)}
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
