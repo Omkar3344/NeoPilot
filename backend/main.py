@@ -233,10 +233,11 @@ async def set_sensitivity(level: str):
 async def set_drone_speed(multiplier: float):
     """
     Set drone movement speed multiplier
-    Range: 0.5 (slow) to 2.0 (fast)
+    Range: 0.1 (very slow) to 10.0 (very fast)
+    Default: 4.0 (fast)
     """
-    if multiplier < 0.5 or multiplier > 2.0:
-        raise HTTPException(status_code=400, detail="Speed multiplier must be between 0.5 and 2.0")
+    if multiplier < 0.1 or multiplier > 10.0:
+        raise HTTPException(status_code=400, detail="Speed multiplier must be between 0.1 and 10.0")
     
     drone_simulator.set_speed_multiplier(multiplier)
     return {

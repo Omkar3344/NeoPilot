@@ -30,8 +30,8 @@ class DroneSimulator:
         self.drag = 0.95  # Air resistance (0.95 = 5% velocity loss per frame)
         self.max_velocity = 0.6  # Maximum velocity per axis (increased from 0.3)
         self.acceleration = 0.04  # Acceleration rate for continuous movement (increased from 0.02)
-        self.speed_multiplier = 1.0  # Adjustable speed multiplier (1.0 = default)
-        self.ground_level = 0.0  # Ground position
+        self.speed_multiplier = 4.0  # Adjustable speed multiplier (4.0 = default, fast movement)
+        self.ground_level = 0.0  # Ground position (solid ground level)
         
         # Current gesture command (for continuous movement)
         self.current_gesture: Optional[str] = None
@@ -87,10 +87,11 @@ class DroneSimulator:
         if self.current_gesture and self.is_flying:
             self._apply_gesture_acceleration(self.current_gesture)
         
-        # Apply drag to slow down drone
-        self.velocity["x"] *= self.drag
-        self.velocity["y"] *= self.drag
-        self.velocity["z"] *= self.drag
+        # Apply uniform drag to all axes for consistent deceleration
+        drag_factor = self.drag
+        self.velocity["x"] *= drag_factor
+        self.velocity["y"] *= drag_factor
+        self.velocity["z"] *= drag_factor
         
         # Gravity disabled for easier testing
         # if self.is_flying and self.current_gesture not in ["up", "stop"]:
@@ -117,21 +118,14 @@ class DroneSimulator:
             #     self.velocity = {"x": 0.0, "y": 0.0, "z": 0.0}
             #     logging.info("Drone landed due to gravity")
         
-        # Boundary constraints (keep drone in visible range)
-        for axis in ["x", "z"]:
-            if abs(self.position[axis]) > self.boundary[axis]:
-                self.position[axis] = math.copysign(self.boundary[axis], self.position[axis])
-                self.velocity[axis] = 0
-        
-        if self.position["y"] > self.boundary["y"]:
-            self.position["y"] = self.boundary["y"]
-            self.velocity["y"] = 0
+        # FREE FLIGHT MODE - Boundaries removed as per user request
+        # No spatial constraints, drone can fly freely in any direction
         
         # Update telemetry
         self.update_telemetry()
     
     def _apply_gesture_acceleration(self, gesture: str):
-        """Apply acceleration based on current gesture with correct axes"""
+        """Apply acceleration based on current gesture with correct axes - EQUAL SPEED FOR ALL DIRECTIONS"""
         accel = self.acceleration * self.speed_multiplier
         
         # Forward/Backward based on drone facing direction
@@ -142,32 +136,32 @@ class DroneSimulator:
             # Move opposite to drone facing direction (Z-axis negative)
             self.velocity["z"] -= accel
         
-        # Left/Right movement (X-axis)
+        # Left/Right movement (X-axis) - SAME SPEED AS FORWARD/BACK
         elif gesture == "left":
             self.velocity["x"] -= accel  # Move left (negative X)
         elif gesture == "right":
             self.velocity["x"] += accel  # Move right (positive X)
         
-        # Up/Down movement (Y-axis = altitude)
+        # Up/Down movement (Y-axis = altitude) - SAME SPEED AS OTHER DIRECTIONS
         elif gesture == "up":
-            self.velocity["y"] += accel * 1.5  # Move up (increase altitude)
+            self.velocity["y"] += accel  # Move up (increase altitude) - removed 1.5x multiplier
         elif gesture == "down":
-            # Only allow downward movement if above ground level
+            # Only allow downward movement if above ground level - SAME SPEED AS OTHER DIRECTIONS
             if self.position["y"] > self.ground_level + 0.1:
-                self.velocity["y"] -= accel  # Move down (decrease altitude)
+                self.velocity["y"] -= accel  # Move down (decrease altitude) - same speed as other axes
             else:
                 self.velocity["y"] = 0  # Stop downward movement at ground
         
         # Hover in place
         elif gesture == "stop":
-            # Stop gesture slows down drone to hover
-            self.velocity["x"] *= 0.85
-            self.velocity["z"] *= 0.85
+            # Stop gesture slows down drone to hover - SAME DECELERATION AS DRAG
+            self.velocity["x"] *= 0.95  # Match the drag coefficient
+            self.velocity["z"] *= 0.95
             # Maintain hover altitude around 2.0
             if self.position["y"] < 2.0:
-                self.velocity["y"] += accel * 1.5
+                self.velocity["y"] += accel * 0.5  # Gentle altitude correction
             elif self.position["y"] > 2.5:
-                self.velocity["y"] -= accel
+                self.velocity["y"] -= accel * 0.5
     
     def update_telemetry(self):
         """Update flight telemetry data"""

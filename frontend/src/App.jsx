@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Grid, Text, Line } from '@react-three/drei';
+import * as THREE from 'three';
 import DroneModel from './components/DroneModel';
 import WebcamFeed from './components/WebcamFeed';
 import TelemetryPanel from './components/TelemetryPanel';
@@ -18,32 +19,37 @@ import {
 } from 'lucide-react';
 import * as THREE from 'three';
 
-// Camera Follow Component
-function CameraRig({ dronePosition, follow }) {
+// Camera Follow Component - Enhanced with manual angle control
+function CameraRig({ dronePosition, follow, manualOffset }) {
   const { camera } = useThree();
-  const targetPosition = useRef(new THREE.Vector3(10, 8, 10));
+  const targetPosition = useRef(new THREE.Vector3(10, 12, 10));
   const targetLookAt = useRef(new THREE.Vector3(0, 0, 0));
   
   useFrame(() => {
     if (follow && dronePosition) {
-      // Dynamic offset based on drone position
-      const offset = new THREE.Vector3(8, 6, 8);
+      // Use manual offset or default offset
+      const baseOffset = manualOffset || new THREE.Vector3(10, 12, 10);
       
-      // Adjust offset if drone is far from origin
+      // Calculate distance from origin for dynamic adjustment
       const distance = Math.sqrt(
         dronePosition[0] * dronePosition[0] + 
         dronePosition[2] * dronePosition[2]
       );
       
-      if (distance > 10) {
-        offset.multiplyScalar(1.2); // Pull back camera if drone is far
-      }
+      // Aggressive scaling to keep drone in view even at far distances
+      const scaleFactor = Math.max(1.0, distance / 12);
+      const scaledOffset = baseOffset.clone().multiplyScalar(scaleFactor);
       
       targetPosition.current.set(
-        dronePosition[0] + offset.x,
-        dronePosition[1] + offset.y,
-        dronePosition[2] + offset.z
+        dronePosition[0] + scaledOffset.x,
+        dronePosition[1] + scaledOffset.y,
+        dronePosition[2] + scaledOffset.z
       );
+      
+      // Ensure camera never goes below ground level
+      if (targetPosition.current.y < 2.0) {
+        targetPosition.current.y = 2.0;
+      }
       
       targetLookAt.current.set(
         dronePosition[0],
@@ -51,8 +57,14 @@ function CameraRig({ dronePosition, follow }) {
         dronePosition[2]
       );
       
-      // Smooth camera follow with faster lerp for better tracking
-      camera.position.lerp(targetPosition.current, 0.08);
+      // Smooth camera follow with faster lerp for far distances
+      const lerpSpeed = distance > 30 ? 0.15 : distance > 15 ? 0.12 : 0.08;
+      camera.position.lerp(targetPosition.current, lerpSpeed);
+      
+      // Keep camera above ground at all times
+      if (camera.position.y < 1.5) {
+        camera.position.y = 1.5;
+      }
       
       // Smooth look-at
       const currentLookAt = new THREE.Vector3();
@@ -64,53 +76,6 @@ function CameraRig({ dronePosition, follow }) {
   });
   
   return null;
-}
-
-// 3D Boundary Box - Enhanced with better visibility
-function BoundaryBox({ size = 20 }) {
-  const points = [
-    // Bottom square (on ground)
-    [-size, 0, -size], [size, 0, -size],
-    [size, 0, -size], [size, 0, size],
-    [size, 0, size], [-size, 0, size],
-    [-size, 0, size], [-size, 0, -size],
-    // Top square (max altitude)
-    [-size, size, -size], [size, size, -size],
-    [size, size, -size], [size, size, size],
-    [size, size, size], [-size, size, size],
-    [-size, size, size], [-size, size, -size],
-    // Vertical lines (corners)
-    [-size, 0, -size], [-size, size, -size],
-    [size, 0, -size], [size, size, -size],
-    [size, 0, size], [size, size, size],
-    [-size, 0, size], [-size, size, size],
-  ];
-  
-  return (
-    <>
-      <Line
-        points={points}
-        color="#8b5cf6"
-        opacity={0.4}
-        transparent
-        lineWidth={2}
-      />
-      {/* Corner markers */}
-      {[
-        [-size, 0, -size], [size, 0, -size], [size, 0, size], [-size, 0, size],
-        [-size, size, -size], [size, size, -size], [size, size, size], [-size, size, size]
-      ].map((pos, i) => (
-        <mesh key={i} position={pos}>
-          <sphereGeometry args={[0.2, 8, 8]} />
-          <meshStandardMaterial 
-            color="#8b5cf6" 
-            emissive="#8b5cf6" 
-            emissiveIntensity={0.5}
-          />
-        </mesh>
-      ))}
-    </>
-  );
 }
 
 function App() {
@@ -131,6 +96,7 @@ function App() {
   const [webcamFrame, setWebcamFrame] = useState(null);
   const [showWebcam, setShowWebcam] = useState(true);
   const [cameraFollow, setCameraFollow] = useState(true);
+  const [manualCameraOffset, setManualCameraOffset] = useState(null);
   const [activeTab, setActiveTab] = useState('telemetry');
   const [cameraSource, setCameraSource] = useState('laptop');
   const [phoneIpAddress, setPhoneIpAddress] = useState('');
@@ -284,17 +250,62 @@ function App() {
             <span>{cameraSource === 'laptop' ? 'Laptop' : 'Phone'} Camera</span>
           </button>
           
-          <button
-            onClick={() => setCameraFollow(!cameraFollow)}
-            className={`p-2 rounded-lg transition-colors ${
-              cameraFollow 
-                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' 
-                : 'bg-slate-700 text-slate-400 border border-slate-600'
-            }`}
-            title={cameraFollow ? 'Camera Following Drone' : 'Free Camera'}
-          >
-            <Maximize2 className="h-5 w-5" />
-          </button>
+          {/* Camera Control Section */}
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setCameraFollow(!cameraFollow)}
+              className={`p-2 rounded-lg transition-colors ${
+                cameraFollow 
+                  ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' 
+                  : 'bg-slate-700 text-slate-400 border border-slate-600'
+              }`}
+              title={cameraFollow ? 'Camera Following Drone' : 'Free Camera'}
+            >
+              <Maximize2 className="h-5 w-5" />
+            </button>
+            
+            {/* Camera Angle Presets - Only show when following */}
+            {cameraFollow && (
+              <div className="flex items-center space-x-1 bg-slate-800/50 rounded-lg p-1 border border-slate-700">
+                <span className="text-xs text-slate-400 px-2">View:</span>
+                <button
+                  onClick={() => setManualCameraOffset(new THREE.Vector3(10, 12, 10))}
+                  className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition"
+                  title="Default Diagonal View"
+                >
+                  Default
+                </button>
+                <button
+                  onClick={() => setManualCameraOffset(new THREE.Vector3(0, 12, 18))}
+                  className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition"
+                  title="Front View"
+                >
+                  Front
+                </button>
+                <button
+                  onClick={() => setManualCameraOffset(new THREE.Vector3(18, 10, 0))}
+                  className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition"
+                  title="Side View"
+                >
+                  Side
+                </button>
+                <button
+                  onClick={() => setManualCameraOffset(new THREE.Vector3(0, 25, 0))}
+                  className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition"
+                  title="Top Down View"
+                >
+                  Top
+                </button>
+                <button
+                  onClick={() => setManualCameraOffset(new THREE.Vector3(12, 4, 12))}
+                  className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition"
+                  title="Low Angle View"
+                >
+                  Low
+                </button>
+              </div>
+            )}
+          </div>
           
           <button
             onClick={() => setShowWebcam(!showWebcam)}
@@ -332,16 +343,18 @@ function App() {
         {/* Left Panel - 3D Simulation */}
         <div className="flex-1 relative bg-gradient-to-br from-slate-950 to-slate-900">
           <Canvas shadows className="bg-transparent">
-            <PerspectiveCamera makeDefault position={[10, 8, 10]} fov={60} />
+            <PerspectiveCamera makeDefault position={[10, 12, 10]} fov={60} />
             <OrbitControls 
               enablePan={true} 
               enableZoom={true} 
               enableRotate={!cameraFollow}
-              maxDistance={40}
+              maxDistance={100}
               minDistance={3}
+              minPolarAngle={0}
+              maxPolarAngle={Math.PI / 2.1}
             />
             
-            {/* Camera Follow System */}
+            {/* Camera Follow System with Manual Control */}
             <CameraRig 
               dronePosition={[
                 droneData.position.x || 0,
@@ -349,6 +362,7 @@ function App() {
                 droneData.position.y || 0
               ]}
               follow={cameraFollow}
+              manualOffset={manualCameraOffset}
             />
             
             {/* Enhanced Lighting - Better atmosphere */}
@@ -373,60 +387,105 @@ function App() {
               intensity={realisticBackground ? 0.6 : 0.4}
             />
             
-            {/* Realistic Sky (only in realistic mode) */}
+            {/* Realistic Sky with Skybox (only in realistic mode) */}
             {realisticBackground && (
               <>
                 <color attach="background" args={['#87CEEB']} />
-                <fog attach="fog" args={['#87CEEB', 30, 100]} />
+                <fog attach="fog" args={['#B0D4F1', 50, 200]} />
+                
+                {/* Simple Skybox using box geometry */}
+                <mesh>
+                  <boxGeometry args={[500, 500, 500]} />
+                  <meshBasicMaterial color="#87CEEB" side={THREE.BackSide} />
+                </mesh>
+                
+                {/* Add some clouds */}
+                {[...Array(10)].map((_, i) => (
+                  <mesh 
+                    key={i} 
+                    position={[
+                      Math.random() * 100 - 50,
+                      20 + Math.random() * 30,
+                      Math.random() * 100 - 50
+                    ]}
+                  >
+                    <sphereGeometry args={[3 + Math.random() * 2, 8, 8]} />
+                    <meshBasicMaterial color="#FFFFFF" transparent opacity={0.6} />
+                  </mesh>
+                ))}
               </>
             )}
             
-            {/* Ground Plane - SOLID GROUND LEVEL at Y=0 */}
+            {/* Ground Plane - SOLID GROUND LEVEL at Y=0 with better texturing */}
             <mesh 
               receiveShadow 
               rotation={[-Math.PI / 2, 0, 0]} 
               position={[0, 0, 0]}
             >
-              <planeGeometry args={[100, 100, 20, 20]} />
+              <planeGeometry args={[500, 500, 100, 100]} />
               <meshStandardMaterial 
-                color={realisticBackground ? "#6B8E23" : "#0f172a"}
-                roughness={realisticBackground ? 0.9 : 0.8}
+                color={realisticBackground ? "#4A7C2F" : "#0f172a"}
+                roughness={realisticBackground ? 0.95 : 0.8}
                 metalness={realisticBackground ? 0.0 : 0.2}
               />
             </mesh>
             
-            {/* Realistic grass texture effect */}
+            {/* Realistic grass texture with varied colors */}
             {realisticBackground && (
-              <mesh 
-                receiveShadow 
-                rotation={[-Math.PI / 2, 0, 0]} 
-                position={[0, 0.01, 0]}
-              >
-                <planeGeometry args={[100, 100, 50, 50]} />
-                <meshStandardMaterial 
-                  color="#7CB342"
-                  roughness={1.0}
-                  wireframe={false}
-                  transparent
-                  opacity={0.3}
-                />
-              </mesh>
+              <>
+                <mesh 
+                  receiveShadow 
+                  rotation={[-Math.PI / 2, 0, 0]} 
+                  position={[0, 0.02, 0]}
+                >
+                  <planeGeometry args={[500, 500, 200, 200]} />
+                  <meshStandardMaterial 
+                    color="#5A9C35"
+                    roughness={1.0}
+                    wireframe={false}
+                    transparent
+                    opacity={0.4}
+                  />
+                </mesh>
+                
+                {/* Add some grass patches for variation */}
+                {[...Array(20)].map((_, i) => (
+                  <mesh 
+                    key={i}
+                    receiveShadow 
+                    rotation={[-Math.PI / 2, 0, 0]} 
+                    position={[
+                      Math.random() * 200 - 100,
+                      0.01,
+                      Math.random() * 200 - 100
+                    ]}
+                  >
+                    <circleGeometry args={[5 + Math.random() * 10, 32]} />
+                    <meshStandardMaterial 
+                      color={`#${Math.floor(Math.random() * 2) ? '5A9C35' : '6BAF47'}`}
+                      roughness={1.0}
+                    />
+                  </mesh>
+                ))}
+              </>
             )}
             
-            {/* Enhanced Grid (only in grid mode) */}
+            {/* Enhanced Grid (only in grid mode) - Fixed flickering */}
             {!realisticBackground && (
               <Grid
                 renderOrder={-1}
-                position={[0, 0, 0]}
-                infiniteGrid
-                cellSize={1}
-                cellThickness={1}
-                sectionSize={5}
-                sectionThickness={2}
+                position={[0, 0.05, 0]}
+                infiniteGrid={false}
+                args={[500, 500]}
+                cellSize={2}
+                cellThickness={0.5}
+                sectionSize={10}
+                sectionThickness={1.5}
                 sectionColor={[0.5, 0.7, 1]}
                 cellColor={[0.2, 0.3, 0.5]}
-                fadeDistance={60}
-                fadeStrength={1.5}
+                fadeDistance={150}
+                fadeStrength={0.5}
+                followCamera={false}
               />
             )}
             
@@ -460,9 +519,6 @@ function App() {
               <cylinderGeometry args={[0.08, 0.08, 15, 16]} />
               <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={0.3} />
             </mesh>
-            
-            {/* Flight Boundary Visualization - Enhanced */}
-            <BoundaryBox size={15} />
             
             {/* Coordinate System Labels - Enhanced with better styling */}
             <Text

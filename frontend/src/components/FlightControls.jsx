@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 const FlightControls = ({ droneData }) => {
-  const [speedMultiplier, setSpeedMultiplier] = useState(1.0);
+  const [speedMultiplier, setSpeedMultiplier] = useState(4.0);
   const [isAdjusting, setIsAdjusting] = useState(false);
 
   // Sync speed from backend
@@ -146,8 +146,8 @@ const FlightControls = ({ droneData }) => {
           <div className="space-y-2">
             <input
               type="range"
-              min="0.5"
-              max="2.0"
+              min="0.1"
+              max="10.0"
               step="0.1"
               value={speedMultiplier}
               onChange={(e) => handleSpeedChange(e.target.value)}
@@ -157,13 +157,13 @@ const FlightControls = ({ droneData }) => {
                        slider-thumb:cursor-pointer slider-thumb:shadow-lg
                        slider-thumb:hover:bg-purple-400 slider-thumb:transition-colors"
               style={{
-                background: `linear-gradient(to right, rgb(168, 85, 247) 0%, rgb(168, 85, 247) ${((speedMultiplier - 0.5) / 1.5) * 100}%, rgb(51, 65, 85) ${((speedMultiplier - 0.5) / 1.5) * 100}%, rgb(51, 65, 85) 100%)`
+                background: `linear-gradient(to right, rgb(168, 85, 247) 0%, rgb(168, 85, 247) ${((speedMultiplier - 0.1) / 9.9) * 100}%, rgb(51, 65, 85) ${((speedMultiplier - 0.1) / 9.9) * 100}%, rgb(51, 65, 85) 100%)`
               }}
             />
             <div className="flex justify-between text-xs text-slate-500">
-              <span>0.5x (Slow)</span>
-              <span>1.0x (Normal)</span>
-              <span>2.0x (Fast)</span>
+              <span>0.1x (Very Slow)</span>
+              <span>4.0x (Default)</span>
+              <span>10.0x (Very Fast)</span>
             </div>
           </div>
 
@@ -171,9 +171,9 @@ const FlightControls = ({ droneData }) => {
             <div className="flex items-center space-x-1">
               <Zap className="h-3 w-3" />
               <span>
-                {speedMultiplier < 0.8 ? 'Slow & Precise' : 
-                 speedMultiplier < 1.3 ? 'Balanced Speed' : 
-                 'Fast Movement'}
+                {speedMultiplier < 2.0 ? 'Slow & Precise' : 
+                 speedMultiplier < 6.0 ? 'Fast Movement' : 
+                 'Very Fast Movement'}
               </span>
             </div>
           </div>
