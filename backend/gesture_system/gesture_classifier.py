@@ -17,7 +17,7 @@ class GestureClassifier:
     UP = 'up'                    # Pointing up (index finger)
     DOWN = 'down'                # Pointing down (hand tilted down)
     BACK = 'back'                # Fist (closed hand)
-    GO_FORWARD = 'go_forward'    # Peace sign / V-sign
+    GO_FORWARD = 'go_forward'    # Two fingers up (index + middle pointing up)
     LAND = 'land'                # OK sign (thumb + index circle)
     STOP = 'stop'                # Open palm (all fingers extended)
     LEFT = 'left'                # Flat hand tilted left
@@ -128,34 +128,36 @@ class GestureClassifier:
                 self._update_count(self.UP)
                 return self.UP, 0.90
         
-        # 6. DOWN (👇 Hand pointing down)
+        # 6. GO_FORWARD (✌️ Two fingers pointing up - Peace/Victory sign)
+        # Index and middle fingers extended upward, ring and pinky closed
+        if extended_count == 2 and index_ext and middle_ext:
+            if not ring_ext and not pinky_ext:
+                # Fingers should be pointing upward
+                if hand_direction['y'] < -0.3 or pitch < -20:
+                    self._update_count(self.GO_FORWARD)
+                    return self.GO_FORWARD, 0.95
+        
+        # Alternative GO_FORWARD with thumb
+        if extended_count == 3 and index_ext and middle_ext and thumb_ext:
+            if not ring_ext and not pinky_ext:
+                if hand_direction['y'] < -0.3 or pitch < -20:
+                    self._update_count(self.GO_FORWARD)
+                    return self.GO_FORWARD, 0.92
+        
+        # 7. DOWN (👇 Hand pointing down)
         # Palm facing downward, fingers pointing down
         if extended_count >= 1:
             if pitch > 40 or hand_direction['y'] > 0.4:  # Tilted down significantly
                 self._update_count(self.DOWN)
                 return self.DOWN, 0.91
         
-        # 7. STOP (✋ Open Palm with fingers spread - MUST be different from GO_FORWARD)
+        # 8. STOP (✋ Open Palm with fingers spread)
         # All fingers extended AND clearly spread apart
         if extended_count >= 4 and index_ext and middle_ext and ring_ext and pinky_ext:
-            # STOP requires wider finger spread than GO_FORWARD
+            # STOP requires wider finger spread
             if finger_spread > 0.15:  # Much wider spread required
                 self._update_count(self.STOP)
                 return self.STOP, 0.96
-        
-        # 8. GO_FORWARD (✋ Open Palm - fingers together or slightly apart)
-        # Palm facing camera, all fingers extended, NOT widely spread
-        if extended_count >= 4:
-            # Check palm is facing camera (not tilted sideways)
-            if abs(yaw) < 35 and abs(pitch) < 35:
-                # All main fingers extended
-                if index_ext and middle_ext and ring_ext and pinky_ext:
-                    # GO_FORWARD has smaller spread than STOP
-                    if finger_spread < 0.15:  # Fingers closer together
-                        # More confident if palm is clearly facing camera
-                        confidence = 0.94 if palm_facing_camera else 0.90
-                        self._update_count(self.GO_FORWARD)
-                        return self.GO_FORWARD, confidence
         
         # No clear gesture detected
         return None, 0.0
@@ -171,9 +173,9 @@ class GestureClassifier:
             self.UP: "👆 Up - Index finger pointing upward (Increase altitude)",
             self.DOWN: "👇 Down - Palm facing downward (Decrease altitude)",
             self.BACK: "👊 Back - Closed fist, back of hand facing camera (Move backward)",
-            self.GO_FORWARD: "✋ Go Forward - Palm facing camera, fingers together (Move forward)",
+            self.GO_FORWARD: "✌️ Go Forward - Two fingers pointing up (Peace sign, Move forward)",
             self.LAND: "👌 Land - Thumb & index forming circle (Land)",
-            self.STOP: "🖐 Stop - Open palm with fingers SPREAD WIDE (Hover/Stop)",
+            self.STOP: "🖐 Stop - Open palm with fingers spread wide (Hover/Stop)",
             self.LEFT: "✊ Left - Closed fist with thumb pointing left (Move left)",
             self.RIGHT: "✊ Right - Closed fist with thumb pointing right (Move right)"
         }

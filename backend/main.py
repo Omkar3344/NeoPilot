@@ -397,5 +397,9 @@ if __name__ == "__main__":
         host="127.0.0.1",
         port=8000,
         reload=True,
-        log_level="info"
+        reload_includes=["*.py", "*.yaml"],
+        reload_excludes=["__pycache__", "*.pyc", "venv"],
+        log_level="info",
+        use_colors=True,
+        access_log=False  # Disable access logs for better performance
     )

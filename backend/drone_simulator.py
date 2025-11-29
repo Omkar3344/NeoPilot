@@ -107,10 +107,10 @@ class DroneSimulator:
         self.position["y"] += self.velocity["y"]
         self.position["z"] += self.velocity["z"]
         
-        # Ground collision - prevent going below ground
-        if self.position["y"] <= self.ground_level:
+        # SOLID GROUND LEVEL - prevent going below ground at all times
+        if self.position["y"] < self.ground_level:
             self.position["y"] = self.ground_level
-            self.velocity["y"] = 0
+            self.velocity["y"] = max(0, self.velocity["y"])  # Only allow upward movement
             # Auto-landing disabled for easier testing
             # if self.is_flying and abs(self.velocity["x"]) < 0.05 and abs(self.velocity["z"]) < 0.05:
             #     self.is_flying = False
@@ -152,7 +152,11 @@ class DroneSimulator:
         elif gesture == "up":
             self.velocity["y"] += accel * 1.5  # Move up (increase altitude)
         elif gesture == "down":
-            self.velocity["y"] -= accel  # Move down (decrease altitude)
+            # Only allow downward movement if above ground level
+            if self.position["y"] > self.ground_level + 0.1:
+                self.velocity["y"] -= accel  # Move down (decrease altitude)
+            else:
+                self.velocity["y"] = 0  # Stop downward movement at ground
         
         # Hover in place
         elif gesture == "stop":

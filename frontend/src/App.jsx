@@ -135,6 +135,7 @@ function App() {
   const [cameraSource, setCameraSource] = useState('laptop');
   const [phoneIpAddress, setPhoneIpAddress] = useState('');
   const [showCameraModal, setShowCameraModal] = useState(false);
+  const [realisticBackground, setRealisticBackground] = useState(false);
   
   const wsRef = useRef(null);
 
@@ -307,6 +308,18 @@ function App() {
           </button>
           
           <button
+            onClick={() => setRealisticBackground(!realisticBackground)}
+            className={`px-4 py-2 rounded-lg transition-colors ${
+              realisticBackground 
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                : 'bg-slate-700 text-slate-400 border border-slate-600'
+            }`}
+            title={realisticBackground ? 'Realistic Environment' : 'Grid Environment'}
+          >
+            {realisticBackground ? '🌍 Realistic' : '📐 Grid'}
+          </button>
+          
+          <button
             onClick={resetDrone}
             className="px-4 py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/30 transition-colors"
           >
@@ -339,10 +352,10 @@ function App() {
             />
             
             {/* Enhanced Lighting - Better atmosphere */}
-            <ambientLight intensity={0.6} />
+            <ambientLight intensity={realisticBackground ? 0.8 : 0.6} />
             <directionalLight 
               position={[20, 25, 15]} 
-              intensity={1.5}
+              intensity={realisticBackground ? 2.0 : 1.5}
               castShadow
               shadow-mapSize-width={2048}
               shadow-mapSize-height={2048}
@@ -352,42 +365,70 @@ function App() {
               shadow-camera-top={25}
               shadow-camera-bottom={-25}
             />
-            <directionalLight position={[-15, 15, -15]} intensity={0.5} color="#8b5cf6" />
-            <pointLight position={[0, 15, 0]} intensity={0.8} color="#60a5fa" />
+            <directionalLight position={[-15, 15, -15]} intensity={0.5} color={realisticBackground ? "#fbbf24" : "#8b5cf6"} />
+            <pointLight position={[0, 15, 0]} intensity={realisticBackground ? 0.5 : 0.8} color={realisticBackground ? "#fef3c7" : "#60a5fa"} />
             <hemisphereLight 
-              skyColor="#60a5fa"
-              groundColor="#1e293b"
-              intensity={0.4}
+              skyColor={realisticBackground ? "#87CEEB" : "#60a5fa"}
+              groundColor={realisticBackground ? "#8B7355" : "#1e293b"}
+              intensity={realisticBackground ? 0.6 : 0.4}
             />
             
-            {/* Ground Plane with Texture */}
+            {/* Realistic Sky (only in realistic mode) */}
+            {realisticBackground && (
+              <>
+                <color attach="background" args={['#87CEEB']} />
+                <fog attach="fog" args={['#87CEEB', 30, 100]} />
+              </>
+            )}
+            
+            {/* Ground Plane - SOLID GROUND LEVEL at Y=0 */}
             <mesh 
               receiveShadow 
               rotation={[-Math.PI / 2, 0, 0]} 
-              position={[0, -0.02, 0]}
+              position={[0, 0, 0]}
             >
-              <planeGeometry args={[100, 100]} />
+              <planeGeometry args={[100, 100, 20, 20]} />
               <meshStandardMaterial 
-                color="#0f172a"
-                roughness={0.8}
-                metalness={0.2}
+                color={realisticBackground ? "#6B8E23" : "#0f172a"}
+                roughness={realisticBackground ? 0.9 : 0.8}
+                metalness={realisticBackground ? 0.0 : 0.2}
               />
             </mesh>
             
-            {/* Enhanced Grid */}
-            <Grid
-              renderOrder={-1}
-              position={[0, 0, 0]}
-              infiniteGrid
-              cellSize={1}
-              cellThickness={1}
-              sectionSize={5}
-              sectionThickness={2}
-              sectionColor={[0.5, 0.7, 1]}
-              cellColor={[0.2, 0.3, 0.5]}
-              fadeDistance={60}
-              fadeStrength={1.5}
-            />
+            {/* Realistic grass texture effect */}
+            {realisticBackground && (
+              <mesh 
+                receiveShadow 
+                rotation={[-Math.PI / 2, 0, 0]} 
+                position={[0, 0.01, 0]}
+              >
+                <planeGeometry args={[100, 100, 50, 50]} />
+                <meshStandardMaterial 
+                  color="#7CB342"
+                  roughness={1.0}
+                  wireframe={false}
+                  transparent
+                  opacity={0.3}
+                />
+              </mesh>
+            )}
+            
+            {/* Enhanced Grid (only in grid mode) */}
+            {!realisticBackground && (
+              <Grid
+                renderOrder={-1}
+                position={[0, 0, 0]}
+                infiniteGrid
+                cellSize={1}
+                cellThickness={1}
+                sectionSize={5}
+                sectionThickness={2}
+                sectionColor={[0.5, 0.7, 1]}
+                cellColor={[0.2, 0.3, 0.5]}
+                fadeDistance={60}
+                fadeStrength={1.5}
+              />
+            )}
             
             {/* Axis Indicators - 3D Arrows */}
             {/* X-axis (Red) - Left/Right */}
