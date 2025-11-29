@@ -22,39 +22,64 @@ import * as THREE from 'three';
 function CameraRig({ dronePosition, follow }) {
   const { camera } = useThree();
   const targetPosition = useRef(new THREE.Vector3(10, 8, 10));
+  const targetLookAt = useRef(new THREE.Vector3(0, 0, 0));
   
   useFrame(() => {
     if (follow && dronePosition) {
-      // Smooth camera follow
+      // Dynamic offset based on drone position
       const offset = new THREE.Vector3(8, 6, 8);
+      
+      // Adjust offset if drone is far from origin
+      const distance = Math.sqrt(
+        dronePosition[0] * dronePosition[0] + 
+        dronePosition[2] * dronePosition[2]
+      );
+      
+      if (distance > 10) {
+        offset.multiplyScalar(1.2); // Pull back camera if drone is far
+      }
+      
       targetPosition.current.set(
         dronePosition[0] + offset.x,
         dronePosition[1] + offset.y,
         dronePosition[2] + offset.z
       );
       
-      camera.position.lerp(targetPosition.current, 0.05);
-      camera.lookAt(dronePosition[0], dronePosition[1], dronePosition[2]);
+      targetLookAt.current.set(
+        dronePosition[0],
+        dronePosition[1],
+        dronePosition[2]
+      );
+      
+      // Smooth camera follow with faster lerp for better tracking
+      camera.position.lerp(targetPosition.current, 0.08);
+      
+      // Smooth look-at
+      const currentLookAt = new THREE.Vector3();
+      camera.getWorldDirection(currentLookAt);
+      currentLookAt.multiplyScalar(10).add(camera.position);
+      currentLookAt.lerp(targetLookAt.current, 0.08);
+      camera.lookAt(currentLookAt);
     }
   });
   
   return null;
 }
 
-// 3D Boundary Box
+// 3D Boundary Box - Enhanced with better visibility
 function BoundaryBox({ size = 20 }) {
   const points = [
-    // Bottom square
+    // Bottom square (on ground)
     [-size, 0, -size], [size, 0, -size],
     [size, 0, -size], [size, 0, size],
     [size, 0, size], [-size, 0, size],
     [-size, 0, size], [-size, 0, -size],
-    // Top square
+    // Top square (max altitude)
     [-size, size, -size], [size, size, -size],
     [size, size, -size], [size, size, size],
     [size, size, size], [-size, size, size],
     [-size, size, size], [-size, size, -size],
-    // Vertical lines
+    // Vertical lines (corners)
     [-size, 0, -size], [-size, size, -size],
     [size, 0, -size], [size, size, -size],
     [size, 0, size], [size, size, size],
@@ -62,13 +87,29 @@ function BoundaryBox({ size = 20 }) {
   ];
   
   return (
-    <Line
-      points={points}
-      color="#3b82f6"
-      opacity={0.2}
-      transparent
-      lineWidth={1}
-    />
+    <>
+      <Line
+        points={points}
+        color="#8b5cf6"
+        opacity={0.4}
+        transparent
+        lineWidth={2}
+      />
+      {/* Corner markers */}
+      {[
+        [-size, 0, -size], [size, 0, -size], [size, 0, size], [-size, 0, size],
+        [-size, size, -size], [size, size, -size], [size, size, size], [-size, size, size]
+      ].map((pos, i) => (
+        <mesh key={i} position={pos}>
+          <sphereGeometry args={[0.2, 8, 8]} />
+          <meshStandardMaterial 
+            color="#8b5cf6" 
+            emissive="#8b5cf6" 
+            emissiveIntensity={0.5}
+          />
+        </mesh>
+      ))}
+    </>
   );
 }
 
@@ -91,6 +132,9 @@ function App() {
   const [showWebcam, setShowWebcam] = useState(true);
   const [cameraFollow, setCameraFollow] = useState(true);
   const [activeTab, setActiveTab] = useState('telemetry');
+  const [cameraSource, setCameraSource] = useState('laptop');
+  const [phoneIpAddress, setPhoneIpAddress] = useState('');
+  const [showCameraModal, setShowCameraModal] = useState(false);
   
   const wsRef = useRef(null);
 
@@ -168,6 +212,41 @@ function App() {
     }
   };
 
+  const switchCamera = async (source, ipAddress = null) => {
+    try {
+      const url = new URL('http://127.0.0.1:8000/camera/switch');
+      url.searchParams.append('source', source);
+      if (source === 'phone' && ipAddress) {
+        url.searchParams.append('ip_address', ipAddress);
+      }
+      
+      const response = await fetch(url, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      
+      if (response.ok) {
+        setCameraSource(source);
+        console.log('Camera switched:', data);
+        setShowCameraModal(false);
+      } else {
+        console.error('Failed to switch camera:', data);
+        alert(data.detail || 'Failed to switch camera');
+      }
+    } catch (error) {
+      console.error('Error switching camera:', error);
+      alert('Error switching camera. Make sure the backend is running.');
+    }
+  };
+
+  const handlePhoneCameraSubmit = () => {
+    if (!phoneIpAddress) {
+      alert('Please enter phone IP address');
+      return;
+    }
+    switchCamera('phone', phoneIpAddress);
+  };
+
   return (
     <div className="h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white overflow-hidden">
       {/* Header */}
@@ -191,6 +270,19 @@ function App() {
         </div>
 
         <div className="flex items-center space-x-4">
+          <button
+            onClick={() => setShowCameraModal(true)}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors text-sm ${
+              cameraSource === 'phone'
+                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                : 'bg-slate-700 text-slate-400 border border-slate-600 hover:bg-slate-600'
+            }`}
+            title="Switch Camera Source"
+          >
+            <Video className="h-4 w-4" />
+            <span>{cameraSource === 'laptop' ? 'Laptop' : 'Phone'} Camera</span>
+          </button>
+          
           <button
             onClick={() => setCameraFollow(!cameraFollow)}
             className={`p-2 rounded-lg transition-colors ${
@@ -246,101 +338,164 @@ function App() {
               follow={cameraFollow}
             />
             
-            {/* Enhanced Lighting */}
-            <ambientLight intensity={0.5} />
+            {/* Enhanced Lighting - Better atmosphere */}
+            <ambientLight intensity={0.6} />
             <directionalLight 
-              position={[15, 15, 10]} 
-              intensity={1.2}
+              position={[20, 25, 15]} 
+              intensity={1.5}
               castShadow
               shadow-mapSize-width={2048}
               shadow-mapSize-height={2048}
-              shadow-camera-far={50}
-              shadow-camera-left={-20}
-              shadow-camera-right={20}
-              shadow-camera-top={20}
-              shadow-camera-bottom={-20}
+              shadow-camera-far={60}
+              shadow-camera-left={-25}
+              shadow-camera-right={25}
+              shadow-camera-top={25}
+              shadow-camera-bottom={-25}
             />
-            <directionalLight position={[-10, 10, -10]} intensity={0.4} />
-            <pointLight position={[0, 10, 0]} intensity={0.6} color="#3b82f6" />
+            <directionalLight position={[-15, 15, -15]} intensity={0.5} color="#8b5cf6" />
+            <pointLight position={[0, 15, 0]} intensity={0.8} color="#60a5fa" />
+            <hemisphereLight 
+              skyColor="#60a5fa"
+              groundColor="#1e293b"
+              intensity={0.4}
+            />
             
-            {/* Environment */}
+            {/* Ground Plane with Texture */}
+            <mesh 
+              receiveShadow 
+              rotation={[-Math.PI / 2, 0, 0]} 
+              position={[0, -0.02, 0]}
+            >
+              <planeGeometry args={[100, 100]} />
+              <meshStandardMaterial 
+                color="#0f172a"
+                roughness={0.8}
+                metalness={0.2}
+              />
+            </mesh>
+            
+            {/* Enhanced Grid */}
             <Grid
               renderOrder={-1}
-              position={[0, -0.01, 0]}
+              position={[0, 0, 0]}
               infiniteGrid
               cellSize={1}
-              cellThickness={0.8}
+              cellThickness={1}
               sectionSize={5}
-              sectionThickness={1.5}
-              sectionColor={[0.4, 0.6, 1]}
-              cellColor={[0.3, 0.3, 0.5]}
-              fadeDistance={50}
-              fadeStrength={1}
+              sectionThickness={2}
+              sectionColor={[0.5, 0.7, 1]}
+              cellColor={[0.2, 0.3, 0.5]}
+              fadeDistance={60}
+              fadeStrength={1.5}
             />
             
-            {/* Flight Boundary Visualization */}
+            {/* Axis Indicators - 3D Arrows */}
+            {/* X-axis (Red) - Left/Right */}
+            <mesh position={[15, 0.1, 0]} rotation={[0, 0, -Math.PI / 2]}>
+              <coneGeometry args={[0.3, 1, 8]} />
+              <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.5} />
+            </mesh>
+            <mesh position={[7.5, 0.05, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.08, 0.08, 15, 16]} />
+              <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.3} />
+            </mesh>
+            
+            {/* Z-axis (Blue) - Forward/Back */}
+            <mesh position={[0, 0.1, 15]} rotation={[0, 0, 0]}>
+              <coneGeometry args={[0.3, 1, 8]} />
+              <meshStandardMaterial color="#3b82f6" emissive="#3b82f6" emissiveIntensity={0.5} />
+            </mesh>
+            <mesh position={[0, 0.05, 7.5]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.08, 0.08, 15, 16]} />
+              <meshStandardMaterial color="#3b82f6" emissive="#3b82f6" emissiveIntensity={0.3} />
+            </mesh>
+            
+            {/* Y-axis (Green) - Altitude */}
+            <mesh position={[0, 15, 0]} rotation={[0, 0, 0]}>
+              <coneGeometry args={[0.3, 1, 8]} />
+              <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={0.5} />
+            </mesh>
+            <mesh position={[0, 7.5, 0]}>
+              <cylinderGeometry args={[0.08, 0.08, 15, 16]} />
+              <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={0.3} />
+            </mesh>
+            
+            {/* Flight Boundary Visualization - Enhanced */}
             <BoundaryBox size={15} />
             
-            {/* Coordinate system labels - Enhanced */}
+            {/* Coordinate System Labels - Enhanced with better styling */}
             <Text
-              position={[18, 0.5, 0]}
+              position={[16, 1, 0]}
               rotation={[0, 0, 0]}
-              fontSize={1.2}
+              fontSize={1.5}
               color="#ef4444"
               anchorX="center"
               anchorY="middle"
-              outlineWidth={0.05}
+              outlineWidth={0.1}
               outlineColor="#000000"
             >
-              +X East
+              RIGHT (+X)
             </Text>
             <Text
-              position={[-18, 0.5, 0]}
+              position={[-16, 1, 0]}
               rotation={[0, 0, 0]}
-              fontSize={1.2}
+              fontSize={1.5}
               color="#ef4444"
               anchorX="center"
               anchorY="middle"
-              outlineWidth={0.05}
+              outlineWidth={0.1}
               outlineColor="#000000"
             >
-              -X West
+              LEFT (-X)
             </Text>
             <Text
-              position={[0, 0.5, 18]}
+              position={[0, 1, 16]}
               rotation={[0, 0, 0]}
-              fontSize={1.2}
+              fontSize={1.5}
               color="#3b82f6"
               anchorX="center"
               anchorY="middle"
-              outlineWidth={0.05}
+              outlineWidth={0.1}
               outlineColor="#000000"
             >
-              +Z North
+              FORWARD (+Z)
             </Text>
             <Text
-              position={[0, 0.5, -18]}
+              position={[0, 1, -16]}
               rotation={[0, 0, 0]}
-              fontSize={1.2}
+              fontSize={1.5}
               color="#3b82f6"
               anchorX="center"
               anchorY="middle"
-              outlineWidth={0.05}
+              outlineWidth={0.1}
               outlineColor="#000000"
             >
-              -Z South
+              BACK (-Z)
             </Text>
             <Text
-              position={[0, 18, 0]}
+              position={[0, 16, 0]}
               rotation={[0, 0, 0]}
-              fontSize={1.2}
+              fontSize={1.5}
               color="#10b981"
               anchorX="center"
               anchorY="middle"
-              outlineWidth={0.05}
+              outlineWidth={0.1}
               outlineColor="#000000"
             >
-              +Y Up
+              UP (+Y)
+            </Text>
+            <Text
+              position={[-13, 0.3, -13]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              fontSize={2}
+              color="#60a5fa"
+              anchorX="center"
+              anchorY="middle"
+              outlineWidth={0.15}
+              outlineColor="#000000"
+              opacity={0.7}
+            >
+              NEOPILOT
             </Text>
             
             {/* Drone Model */}
@@ -441,6 +596,90 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Camera Source Modal */}
+      {showCameraModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-800 rounded-xl p-6 w-96 border border-slate-700 shadow-2xl">
+            <h2 className="text-xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              Camera Source
+            </h2>
+            
+            <div className="space-y-4">
+              {/* Laptop Camera Option */}
+              <button
+                onClick={() => switchCamera('laptop')}
+                className={`w-full p-4 rounded-lg border-2 transition-all ${
+                  cameraSource === 'laptop'
+                    ? 'border-blue-500 bg-blue-500/10'
+                    : 'border-slate-600 hover:border-slate-500 bg-slate-700/50'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <Video className="h-6 w-6 text-blue-400" />
+                  <div className="text-left">
+                    <div className="font-semibold">Laptop Camera</div>
+                    <div className="text-sm text-slate-400">Built-in webcam</div>
+                  </div>
+                </div>
+              </button>
+
+              {/* Phone Camera Option */}
+              <div className={`p-4 rounded-lg border-2 transition-all ${
+                cameraSource === 'phone'
+                  ? 'border-orange-500 bg-orange-500/10'
+                  : 'border-slate-600 bg-slate-700/50'
+              }`}>
+                <div className="flex items-center space-x-3 mb-3">
+                  <Video className="h-6 w-6 text-orange-400" />
+                  <div className="text-left flex-1">
+                    <div className="font-semibold">Phone Camera</div>
+                    <div className="text-sm text-slate-400">Via IP Webcam app</div>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={phoneIpAddress}
+                    onChange={(e) => setPhoneIpAddress(e.target.value)}
+                    placeholder="192.168.1.100:8080"
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
+                  />
+                  <button
+                    onClick={handlePhoneCameraSubmit}
+                    className="w-full px-4 py-2 bg-orange-500 hover:bg-orange-600 rounded-lg font-medium transition-colors"
+                  >
+                    Connect Phone Camera
+                  </button>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                <div className="text-sm text-blue-300">
+                  <strong>Setup Instructions:</strong>
+                  <ol className="list-decimal list-inside mt-2 space-y-1 text-xs">
+                    <li>Install "IP Webcam" app on phone</li>
+                    <li>Connect phone to same WiFi as laptop</li>
+                    <li>Open app and tap "Start Server"</li>
+                    <li>Note the IP address shown (e.g., 192.168.1.100:8080)</li>
+                    <li>Enter the IP address above</li>
+                  </ol>
+                </div>
+              </div>
+
+              {/* Close Button */}
+              <button
+                onClick={() => setShowCameraModal(false)}
+                className="w-full px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

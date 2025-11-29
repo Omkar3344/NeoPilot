@@ -5,84 +5,77 @@ import {
   ArrowDown, 
   ArrowLeft, 
   ArrowRight,
-  RotateCcw,
-  RotateCw,
-  Square,
-  AlertTriangle,
-  Pause
+  MoveUp,
+  MoveDown,
+  CircleDot,
+  AlertTriangle
 } from 'lucide-react';
 
 const GestureGuide = () => {
   const gestures = [
     {
-      name: 'Takeoff',
-      icon: ArrowUp,
-      color: 'text-green-400',
-      description: 'Open palm facing up',
-      command: 'takeoff'
+      name: 'Stop / Hover',
+      icon: Hand,
+      color: 'text-orange-400',
+      description: '✋ Open palm with fingers spread apart',
+      details: 'All fingers extended and separated - Hover in place',
+      command: 'stop'
     },
     {
       name: 'Land',
-      icon: ArrowDown,
+      icon: CircleDot,
       color: 'text-red-400',
-      description: 'Closed fist',
+      description: '👌 OK sign - thumb & index circle',
+      details: 'Thumb and index form circle, other 3 fingers extended',
       command: 'land'
     },
     {
-      name: 'Move Forward',
+      name: 'Go Forward',
+      icon: MoveUp,
+      color: 'text-green-400',
+      description: '✋ Palm facing camera, all fingers extended',
+      details: 'Open palm facing forward - Move drone forward',
+      command: 'go_forward'
+    },
+    {
+      name: 'Back',
+      icon: MoveDown,
+      color: 'text-blue-400',
+      description: '👊 Closed fist, back of hand visible',
+      details: 'All fingers curled, palm facing away',
+      command: 'back'
+    },
+    {
+      name: 'Up',
       icon: ArrowUp,
-      color: 'text-blue-400',
-      description: 'Point index finger forward',
-      command: 'move_forward'
-    },
-    {
-      name: 'Move Backward',
-      icon: ArrowDown,
-      color: 'text-blue-400',
-      description: 'Point thumb backward',
-      command: 'move_backward'
-    },
-    {
-      name: 'Move Left',
-      icon: ArrowLeft,
-      color: 'text-purple-400',
-      description: 'Point index finger left',
-      command: 'move_left'
-    },
-    {
-      name: 'Move Right',
-      icon: ArrowRight,
-      color: 'text-purple-400',
-      description: 'Point index finger right',
-      command: 'move_right'
-    },
-    {
-      name: 'Rotate Left',
-      icon: RotateCcw,
-      color: 'text-yellow-400',
-      description: 'L-shape with thumb and index',
-      command: 'rotate_left'
-    },
-    {
-      name: 'Rotate Right',
-      icon: RotateCw,
-      color: 'text-yellow-400',
-      description: 'Reverse L-shape',
-      command: 'rotate_right'
-    },
-    {
-      name: 'Hover',
-      icon: Pause,
       color: 'text-cyan-400',
-      description: 'Peace sign (two fingers)',
-      command: 'hover'
+      description: '👆 Index finger pointing upward',
+      details: 'Only index extended, palm facing forward',
+      command: 'up'
     },
     {
-      name: 'Emergency Stop',
-      icon: AlertTriangle,
-      color: 'text-red-500',
-      description: 'All fingers spread wide',
-      command: 'emergency_stop'
+      name: 'Down',
+      icon: ArrowDown,
+      color: 'text-purple-400',
+      description: '👇 Palm facing downward',
+      details: 'Hand rotated with fingers pointing down',
+      command: 'down'
+    },
+    {
+      name: 'Left',
+      icon: ArrowLeft,
+      color: 'text-yellow-400',
+      description: '✊ Closed fist with thumb pointing left',
+      details: 'Fist with thumb extended to the left',
+      command: 'left'
+    },
+    {
+      name: 'Right',
+      icon: ArrowRight,
+      color: 'text-pink-400',
+      description: '✊ Closed fist with thumb pointing right',
+      details: 'Fist with thumb extended to the right',
+      command: 'right'
     }
   ];
 
@@ -91,11 +84,11 @@ const GestureGuide = () => {
       <div className="mb-6">
         <div className="flex items-center space-x-3 mb-4">
           <Hand className="h-6 w-6 text-blue-400" />
-          <h3 className="text-lg font-semibold text-slate-200">Hand Gestures</h3>
+          <h3 className="text-lg font-semibold text-slate-200">Hand Gestures (8 Simple)</h3>
         </div>
         <p className="text-sm text-slate-400 leading-relaxed">
-          Position your hand clearly in front of the camera. Make sure gestures are 
-          distinct and held for at least 1 second for recognition.
+          Position your hand clearly in front of the camera. Make distinct gestures 
+          and hold for 1 second for accurate recognition. Improved detection system!
         </p>
       </div>
 

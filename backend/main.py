@@ -26,6 +26,8 @@ drone_simulator = DroneSimulator()
 camera = None
 connected_clients: List[WebSocket] = []
 config = None
+camera_source = "laptop"  # "laptop" or "phone"
+phone_camera_url = None
 
 # Load configuration
 def load_config():
@@ -54,9 +56,67 @@ def load_config():
         }
     return config
 
+# Initialize camera based on source
+def initialize_camera(source="laptop", ip_address=None):
+    global camera, camera_source, phone_camera_url
+    
+    # Release existing camera if any
+    if camera is not None:
+        camera.release()
+        camera = None
+        # Small delay to ensure proper release
+        time.sleep(0.1)
+    
+    try:
+        if source == "laptop":
+            # Use laptop camera with optimized settings
+            device_id = config.get('camera', {}).get('laptop', {}).get('device_id', 0)
+            camera = cv2.VideoCapture(device_id, cv2.CAP_DSHOW)  # DirectShow for Windows - faster
+            
+            # Set properties BEFORE opening to avoid lag
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            camera.set(cv2.CAP_PROP_FPS, 30)
+            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimal buffer
+            camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))  # MJPEG codec - faster
+            
+            camera_source = "laptop"
+            logger.info("Laptop camera initialized with optimized settings")
+        elif source == "phone" and ip_address:
+            # Use phone camera via IP Webcam with optimized settings
+            stream_path = config.get('camera', {}).get('phone', {}).get('stream_path', '/video')
+            phone_camera_url = f"http://{ip_address}{stream_path}"
+            
+            # Use FFMPEG backend for better network streaming
+            camera = cv2.VideoCapture(phone_camera_url, cv2.CAP_FFMPEG)
+            
+            # Optimize for network streaming
+            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimal buffer - critical for reducing lag
+            camera.set(cv2.CAP_PROP_FPS, 30)
+            
+            camera_source = "phone"
+            logger.info(f"Phone camera initialized with FFMPEG: {phone_camera_url}")
+        else:
+            raise ValueError(f"Invalid camera source: {source}")
+        
+        # Verify camera opened
+        if not camera.isOpened():
+            raise Exception(f"Failed to open {source} camera")
+        
+        # Warm up camera - grab and discard first few frames (often corrupted)
+        for _ in range(5):
+            camera.grab()
+        
+        logger.info(f"Camera warmed up and ready: {source}")
+        return True
+    except Exception as e:
+        logger.error(f"Error initializing {source} camera: {e}")
+        camera = None
+        return False
+
 # Initialize camera and gesture pipeline
 def initialize_systems():
-    global gesture_pipeline, camera, config
+    global gesture_pipeline, camera, config, camera_source
     
     try:
         # Load configuration
@@ -73,12 +133,10 @@ def initialize_systems():
         )
         logger.info("Improved gesture pipeline initialized successfully")
         
-        # Initialize camera
-        camera = cv2.VideoCapture(0)
-        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        camera.set(cv2.CAP_PROP_FPS, 30)
-        logger.info("Camera initialized successfully")
+        # Initialize camera based on config
+        default_source = config.get('camera', {}).get('default_source', 'laptop')
+        camera_source = default_source
+        initialize_camera(default_source)
         
     except Exception as e:
         logger.error(f"Error initializing systems: {e}")
@@ -171,6 +229,57 @@ async def set_sensitivity(level: str):
     gesture_pipeline.adjust_sensitivity(level)
     return {"message": f"Sensitivity set to {level}", "level": level}
 
+@app.post("/drone/speed/{multiplier}")
+async def set_drone_speed(multiplier: float):
+    """
+    Set drone movement speed multiplier
+    Range: 0.5 (slow) to 2.0 (fast)
+    """
+    if multiplier < 0.5 or multiplier > 2.0:
+        raise HTTPException(status_code=400, detail="Speed multiplier must be between 0.5 and 2.0")
+    
+    drone_simulator.set_speed_multiplier(multiplier)
+    return {
+        "message": f"Drone speed set to {multiplier}x",
+        "speed_multiplier": multiplier
+    }
+
+@app.get("/camera/status")
+async def get_camera_status():
+    """Get current camera source and status"""
+    global camera_source, phone_camera_url
+    return {
+        "source": camera_source,
+        "is_connected": camera is not None and camera.isOpened(),
+        "phone_url": phone_camera_url if camera_source == "phone" else None
+    }
+
+@app.post("/camera/switch")
+async def switch_camera(source: str, ip_address: str = None):
+    """
+    Switch camera source between laptop and phone
+    
+    Args:
+        source: "laptop" or "phone"
+        ip_address: Required for phone camera (e.g., "192.168.1.100:8080")
+    """
+    if source not in ['laptop', 'phone']:
+        raise HTTPException(status_code=400, detail="Invalid camera source. Use 'laptop' or 'phone'")
+    
+    if source == "phone" and not ip_address:
+        raise HTTPException(status_code=400, detail="IP address required for phone camera")
+    
+    success = initialize_camera(source, ip_address)
+    
+    if success:
+        return {
+            "message": f"Switched to {source} camera",
+            "source": camera_source,
+            "is_connected": camera is not None and camera.isOpened()
+        }
+    else:
+        raise HTTPException(status_code=500, detail=f"Failed to initialize {source} camera")
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
@@ -180,8 +289,13 @@ async def websocket_endpoint(websocket: WebSocket):
     connected_clients.append(websocket)
     logger.info(f"Client connected. Total clients: {len(connected_clients)}")
     
+    frame_count = 0
+    last_time = time.time()
+    
     try:
         while True:
+            frame_start = time.time()
+            
             # Capture frame from camera
             if camera is None or not camera.isOpened():
                 await websocket.send_json({
@@ -203,14 +317,18 @@ async def websocket_endpoint(websocket: WebSocket):
             # Flip frame horizontally for mirror effect
             frame = cv2.flip(frame, 1)
             
-            # Process frame through improved gesture pipeline
-            gesture_name, confidence, is_new_gesture, annotated_frame = None, 0.0, False, frame
+            # Process gesture detection on every frame for continuous tracking
+            frame_count += 1
+            gesture_name, confidence, is_new_gesture = None, 0.0, False
+            
             if gesture_pipeline is not None:
                 try:
+                    # Process every frame for continuous hand tracking visualization
                     gesture_name, confidence, is_new_gesture, annotated_frame = gesture_pipeline.process_frame(frame)
+                    # Always use annotated frame to show continuous hand landmarks
+                    frame = annotated_frame
                 except Exception as e:
                     logger.error(f"Error in gesture detection: {e}")
-                    gesture_name, confidence, is_new_gesture, annotated_frame = None, 0.0, False, frame
             
             # Execute drone command ONLY on new stable gestures
             drone_response = drone_simulator.get_status()
@@ -218,11 +336,23 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.info(f"Executing command for new gesture: {gesture_name} (confidence: {confidence:.2f})")
                 drone_response = drone_simulator.execute_gesture_command(gesture_name, confidence)
             
-            # Use the annotated frame (already has landmarks and info drawn)
-            frame = annotated_frame
+            # Always update physics for continuous movement and gravity
+            drone_simulator.update_physics()
             
-            # Convert frame to base64 for transmission
-            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            # Resize frame for faster transmission (optional - maintains aspect ratio)
+            height, width = frame.shape[:2]
+            if width > 640:
+                scale = 640 / width
+                new_width = 640
+                new_height = int(height * scale)
+                frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+            
+            # Convert frame to base64 with higher quality
+            encode_params = [
+                cv2.IMWRITE_JPEG_QUALITY, 95,  # Higher quality (was 80)
+                cv2.IMWRITE_JPEG_OPTIMIZE, 1    # Optimize encoding
+            ]
+            _, buffer = cv2.imencode('.jpg', frame, encode_params)
             frame_base64 = base64.b64encode(buffer.tobytes()).decode('utf-8')
             
             # Send data to frontend
@@ -238,8 +368,18 @@ async def websocket_endpoint(websocket: WebSocket):
             
             await websocket.send_json(response_data)
             
-            # Control frame rate (~30 FPS)
-            await asyncio.sleep(0.033)
+            # Dynamic frame rate control - maintain ~25 FPS for smooth continuous tracking
+            elapsed = time.time() - frame_start
+            target_frame_time = 0.04  # 25 FPS - balance between smoothness and performance
+            sleep_time = max(0.001, target_frame_time - elapsed)
+            await asyncio.sleep(sleep_time)
+            
+            # Log FPS occasionally
+            if frame_count % 100 == 0:
+                current_time = time.time()
+                fps = 100 / (current_time - last_time)
+                logger.info(f"Streaming FPS: {fps:.1f}")
+                last_time = current_time
             
     except WebSocketDisconnect:
         logger.info("Client disconnected")

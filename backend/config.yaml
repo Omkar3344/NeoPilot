@@ -2,8 +2,8 @@
 
 # Hand Detection Settings
 hand_detection:
-  min_detection_confidence: 0.8
-  min_tracking_confidence: 0.7
+  min_detection_confidence: 0.7  # Lowered from 0.8 for smoother continuous tracking
+  min_tracking_confidence: 0.6   # Lowered from 0.7 for better tracking persistence
   model_complexity: 1  # 0=lite, 1=full (more accurate)
   
 # Gesture Classification Settings
@@ -12,8 +12,8 @@ gesture_classification:
   
 # Temporal Smoothing Settings
 temporal_smoothing:
-  consistency_frames: 5  # Frames needed for consistent gesture
-  cooldown_time: 0.5  # Minimum seconds between gesture changes
+  consistency_frames: 3  # Reduced from 5 - faster response with new accurate gestures
+  cooldown_time: 0.3  # Reduced from 0.5 - more responsive
   max_history: 30  # Maximum frames to keep in history
   
 # Visualization Settings
@@ -42,6 +42,20 @@ sensitivity:
 performance:
   target_fps: 30
   detection_timeout: 2.0  # Seconds before resetting on no detection
+  
+# Camera Settings
+camera:
+  default_source: "laptop"  # "laptop" or "phone"
+  laptop:
+    device_id: 0
+    width: 640
+    height: 480
+    fps: 30
+  phone:
+    ip_address: ""  # Will be set via API, e.g., "192.168.1.100:8080"
+    stream_path: "/video"  # IP Webcam default path
+    width: 640
+    height: 480
   
 # Drone Control Settings
 drone_control:

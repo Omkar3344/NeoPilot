@@ -78,6 +78,21 @@ const TelemetryPanel = ({ droneData }) => {
         </div>
       </div>
 
+      {/* Current Continuous Gesture */}
+      {droneData.current_gesture && droneData.is_flying && (
+        <div className="mb-6">
+          <div className="flex items-center space-x-3 p-4 rounded-lg border bg-blue-500/10 border-blue-500/30 text-blue-400 animate-pulse">
+            <RotateCw className="h-5 w-5 animate-spin" />
+            <div>
+              <div className="font-semibold text-sm">CONTINUOUS MOVEMENT</div>
+              <div className="text-xs opacity-90">
+                {droneData.current_gesture.toUpperCase().replace('_', ' ')}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Telemetry Grid */}
       <div className="space-y-4 mb-6">
         <h3 className="text-lg font-semibold text-slate-200">Flight Telemetry</h3>

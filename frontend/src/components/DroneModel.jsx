@@ -7,13 +7,22 @@ const DroneModel = ({ position, rotation, isFlying }) => {
   const droneRef = useRef();
   const propellerRefs = useRef([]);
   const glowRef = useRef();
+  const targetPosition = useRef([0, 0, 0]);
+  const currentPosition = useRef([0, 0, 0]);
   
-  // Convert position coordinates for 3D space
-  const dronePosition = [
-    position.x || 0,
-    (position.z || 0) + (isFlying ? 2 : 0.5), // Y is up in Three.js
-    position.y || 0
+  // CORRECT axis mapping for Three.js:
+  // Backend: X (left/right), Y (altitude), Z (forward/back)
+  // Three.js: X (left/right), Y (altitude), Z (forward/back)
+  targetPosition.current = [
+    position.x || 0,      // X: left/right (same)
+    position.y || 0,      // Y: altitude (same)
+    position.z || 0       // Z: forward/back (same)
   ];
+  
+  // Add base height when on ground
+  if (!isFlying) {
+    targetPosition.current[1] = 0.5;
+  }
   
   // Convert rotation
   const droneRotation = [
@@ -22,19 +31,33 @@ const DroneModel = ({ position, rotation, isFlying }) => {
     (rotation.roll || 0) * Math.PI / 180
   ];
 
-  // Animate propellers and add hover effect
+  // Animate propellers and smooth position interpolation
   useFrame((state) => {
+    // Smooth position interpolation for continuous movement
+    if (droneRef.current) {
+      currentPosition.current[0] += (targetPosition.current[0] - currentPosition.current[0]) * 0.15;
+      currentPosition.current[1] += (targetPosition.current[1] - currentPosition.current[1]) * 0.15;
+      currentPosition.current[2] += (targetPosition.current[2] - currentPosition.current[2]) * 0.15;
+      
+      droneRef.current.position.set(
+        currentPosition.current[0],
+        currentPosition.current[1],
+        currentPosition.current[2]
+      );
+      
+      // Add subtle hover animation when flying
+      if (isFlying) {
+        droneRef.current.position.y += Math.sin(state.clock.elapsedTime * 3) * 0.015;
+      }
+    }
+    
+    // Propeller rotation
     if (propellerRefs.current) {
       propellerRefs.current.forEach((propeller) => {
         if (propeller) {
           propeller.rotation.y += isFlying ? 0.8 : 0.05; // Fast rotation when flying
         }
       });
-    }
-    
-    // Add subtle hover animation when flying
-    if (droneRef.current && isFlying) {
-      droneRef.current.position.y += Math.sin(state.clock.elapsedTime * 3) * 0.015;
     }
     
     // Animate glow
@@ -44,7 +67,7 @@ const DroneModel = ({ position, rotation, isFlying }) => {
   });
 
   return (
-    <group ref={droneRef} position={dronePosition} rotation={droneRotation}>
+    <group ref={droneRef} rotation={droneRotation}>
       {/* Bottom glow effect when flying */}
       {isFlying && (
         <Torus 

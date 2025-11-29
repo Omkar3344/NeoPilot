@@ -1,7 +1,18 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Camera, Hand, CheckCircle } from 'lucide-react';
 
 const WebcamFeed = ({ frame }) => {
+  const imgRef = useRef(null);
+  const prevFrameRef = useRef(null);
+
+  useEffect(() => {
+    // Only update image if frame actually changed (prevents unnecessary re-renders)
+    if (frame && frame !== prevFrameRef.current && imgRef.current) {
+      imgRef.current.src = frame;
+      prevFrameRef.current = frame;
+    }
+  }, [frame]);
+
   return (
     <div className="p-4 bg-slate-900/30">
       <div className="flex items-center justify-between mb-2">
@@ -19,9 +30,11 @@ const WebcamFeed = ({ frame }) => {
         <div className="aspect-video bg-slate-950 rounded-xl overflow-hidden border-2 border-slate-700/50 shadow-xl">
           {frame ? (
             <img 
-              src={frame} 
+              ref={imgRef}
               alt="Webcam Feed" 
               className="w-full h-full object-cover"
+              loading="eager"
+              decoding="async"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center">

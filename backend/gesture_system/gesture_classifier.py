@@ -1,6 +1,7 @@
 """
 Rule-Based Gesture Classifier
 Uses hand geometry and features to accurately classify gestures
+Based on specific hand pose patterns from reference images
 """
 import numpy as np
 from typing import Optional, Tuple, Dict
@@ -8,35 +9,31 @@ import logging
 
 class GestureClassifier:
     """
-    Classify gestures using geometric rules and hand features
-    More reliable than ML models for well-defined gestures
+    Classify gestures using precise geometric rules
+    Optimized for accuracy with simple, distinct gestures
     """
     
-    # Gesture definitions
-    TAKEOFF = 'takeoff'
-    LAND = 'land'
-    MOVE_FORWARD = 'move_forward'
-    MOVE_BACKWARD = 'move_backward'
-    MOVE_LEFT = 'move_left'
-    MOVE_RIGHT = 'move_right'
-    ROTATE_LEFT = 'rotate_left'
-    ROTATE_RIGHT = 'rotate_right'
-    HOVER = 'hover'
-    EMERGENCY_STOP = 'emergency_stop'
+    # Gesture definitions - matching the reference image
+    UP = 'up'                    # Pointing up (index finger)
+    DOWN = 'down'                # Pointing down (hand tilted down)
+    BACK = 'back'                # Fist (closed hand)
+    GO_FORWARD = 'go_forward'    # Peace sign / V-sign
+    LAND = 'land'                # OK sign (thumb + index circle)
+    STOP = 'stop'                # Open palm (all fingers extended)
+    LEFT = 'left'                # Flat hand tilted left
+    RIGHT = 'right'              # Flat hand tilted right
     
     def __init__(self):
         """Initialize gesture classifier"""
         self.gesture_labels = {
-            0: self.TAKEOFF,
-            1: self.LAND,
-            2: self.MOVE_FORWARD,
-            3: self.MOVE_BACKWARD,
-            4: self.MOVE_LEFT,
-            5: self.MOVE_RIGHT,
-            6: self.ROTATE_LEFT,
-            7: self.ROTATE_RIGHT,
-            8: self.HOVER,
-            9: self.EMERGENCY_STOP
+            0: self.UP,
+            1: self.DOWN,
+            2: self.BACK,
+            3: self.GO_FORWARD,
+            4: self.LAND,
+            5: self.STOP,
+            6: self.LEFT,
+            7: self.RIGHT
         }
         
         # Reverse mapping
@@ -45,11 +42,11 @@ class GestureClassifier:
         # Classification statistics
         self.classification_counts = {gesture: 0 for gesture in self.gesture_labels.values()}
         
-        logging.info("GestureClassifier initialized with rule-based classification")
+        logging.info("GestureClassifier initialized with 8 precise gestures")
     
     def classify(self, features: Dict) -> Tuple[Optional[str], float]:
         """
-        Classify gesture based on extracted features
+        Classify gesture based on extracted features using precise rules
         
         Args:
             features: Dictionary of extracted hand features
@@ -59,147 +56,106 @@ class GestureClassifier:
         """
         fingers_extended = features['fingers_extended']
         extended_count = features['extended_count']
-        finger_angles = features['finger_angles']
         palm_orientation = features['palm_orientation']
+        palm_normal = features.get('palm_normal', {})
         finger_spread = features['finger_spread']
         hand_direction = features['hand_direction']
-        thumb_position = features['thumb_position']
+        thumb_direction = features.get('thumb_direction', {'x': 0, 'y': 0, 'z': 0})
         finger_distances = features['finger_distances']
+        wrist_position = features.get('wrist_position', {})
         
         # Extract individual finger states
         thumb_ext, index_ext, middle_ext, ring_ext, pinky_ext = fingers_extended
         
-        # Rule-based classification with confidence scores
+        # Get orientation values
+        yaw = palm_orientation['yaw']      # Left/Right tilt
+        pitch = palm_orientation['pitch']  # Up/Down tilt
+        roll = palm_orientation['roll']    # Rotation
         
-        # 1. OPEN PALM (All 5 fingers extended) -> TAKEOFF
-        if extended_count == 5 and finger_spread > 0.12:
-            self._update_count(self.TAKEOFF)
-            return self.TAKEOFF, 0.95
+        # Palm facing direction (more reliable than pitch/yaw alone)
+        palm_facing_camera = palm_normal.get('facing_camera', False)
+        palm_facing_away = palm_normal.get('facing_away', False)
         
-        # 1b. OPEN PALM (4+ fingers) -> TAKEOFF (alternative for when thumb is tricky)
-        if extended_count >= 4 and finger_spread > 0.13:
-            # Check that it's not the thumb missing (all other fingers extended)
-            if index_ext and middle_ext and ring_ext and pinky_ext:
-                self._update_count(self.TAKEOFF)
-                return self.TAKEOFF, 0.90
+        # Priority-based gesture detection (most specific to least specific)
         
-        # 2. FIST (No fingers extended) -> LAND
-        if extended_count == 0:
-            self._update_count(self.LAND)
-            return self.LAND, 0.95
-        
-        # 3. PEACE SIGN (Index + Middle extended) -> MOVE FORWARD
-        if (extended_count == 2 and 
-            index_ext and middle_ext and 
-            not thumb_ext and not ring_ext and not pinky_ext):
-            # Check if hand is pointing forward (y is negative)
-            if hand_direction['y'] < -0.3:
-                self._update_count(self.MOVE_FORWARD)
-                return self.MOVE_FORWARD, 0.90
-        
-        # 4. THUMBS UP -> MOVE UP / TAKEOFF (alternative)
-        if (thumb_ext and not index_ext and not middle_ext and 
-            not ring_ext and not pinky_ext):
-            # Thumb pointing up
-            if hand_direction['y'] < -0.5:
-                self._update_count(self.TAKEOFF)
-                return self.TAKEOFF, 0.85
-        
-        # 5. THUMBS DOWN -> LAND (alternative)
-        if (thumb_ext and not index_ext and not middle_ext and 
-            not ring_ext and not pinky_ext):
-            # Thumb pointing down
-            if hand_direction['y'] > 0.5:
+        # 1. LAND (👌 OK Sign - Thumb and Index forming circle, other fingers extended)
+        # Most specific - check first
+        thumb_index_dist = finger_distances.get('thumb_index_distance', 1.0)
+        if thumb_ext and index_ext and thumb_index_dist < 0.07:  # Tips close together
+            # Check if other 3 fingers are extended
+            if middle_ext and ring_ext and pinky_ext:
                 self._update_count(self.LAND)
-                return self.LAND, 0.85
+                return self.LAND, 0.95
         
-        # 6. POINTING (Only index extended) -> DIRECTIONAL MOVEMENT
-        if (extended_count == 1 and index_ext):
-            # Determine direction based on hand orientation
-            yaw = palm_orientation['yaw']
-            pitch = palm_orientation['pitch']
-            
-            # Left/Right based on yaw
-            if abs(yaw) > 30:
-                if yaw > 0:
-                    self._update_count(self.MOVE_RIGHT)
-                    return self.MOVE_RIGHT, 0.85
-                else:
-                    self._update_count(self.MOVE_LEFT)
-                    return self.MOVE_LEFT, 0.85
-            
-            # Forward/Backward based on pitch
-            if abs(pitch) > 20:
-                if pitch < 0:
-                    self._update_count(self.MOVE_FORWARD)
-                    return self.MOVE_FORWARD, 0.85
-                else:
-                    self._update_count(self.MOVE_BACKWARD)
-                    return self.MOVE_BACKWARD, 0.85
+        # 2. BACK (👊 Closed Fist - Back of hand facing camera)
+        # All fingers curled, no fingers extended
+        # Enhanced: Also check palm is facing away from camera
+        if extended_count == 0:
+            # More confident if palm is clearly facing away
+            confidence = 0.98 if palm_facing_away else 0.95
+            self._update_count(self.BACK)
+            return self.BACK, confidence
         
-        # 7. THREE FINGERS (Index + Middle + Ring) -> HOVER
-        if (extended_count == 3 and 
-            index_ext and middle_ext and ring_ext and 
-            not thumb_ext and not pinky_ext):
-            self._update_count(self.HOVER)
-            return self.HOVER, 0.90
+        # 3. LEFT (✊ Fist with thumb pointing left)
+        # Closed fist with thumb extended, pointing left
+        if extended_count == 1 and thumb_ext:
+            if not index_ext and not middle_ext and not ring_ext and not pinky_ext:
+                # Thumb pointing left (negative X direction)
+                if thumb_direction['x'] < -0.4 or yaw < -35:
+                    self._update_count(self.LEFT)
+                    return self.LEFT, 0.93
         
-        # 8. L-SHAPE (Thumb + Index) -> ROTATE LEFT
-        if (extended_count == 2 and thumb_ext and index_ext and 
-            not middle_ext and not ring_ext and not pinky_ext):
-            # Check thumb-index angle for L-shape
-            thumb_index_dist = finger_distances.get('thumb_index_distance', 0)
-            if thumb_index_dist > 0.15:  # Wide L-shape
-                # Determine rotation based on hand position
-                if hand_direction['x'] < 0:
-                    self._update_count(self.ROTATE_LEFT)
-                    return self.ROTATE_LEFT, 0.85
-                else:
-                    self._update_count(self.ROTATE_RIGHT)
-                    return self.ROTATE_RIGHT, 0.85
+        # 4. RIGHT (✊ Fist with thumb pointing right)
+        # Closed fist with thumb extended, pointing right
+        if extended_count == 1 and thumb_ext:
+            if not index_ext and not middle_ext and not ring_ext and not pinky_ext:
+                # Thumb pointing right (positive X direction)
+                if thumb_direction['x'] > 0.4 or yaw > 35:
+                    self._update_count(self.RIGHT)
+                    return self.RIGHT, 0.93
         
-        # 9. FOUR FINGERS (All except thumb) -> MOVE BACKWARD
-        if (extended_count == 4 and 
-            index_ext and middle_ext and ring_ext and pinky_ext and 
-            not thumb_ext):
-            self._update_count(self.MOVE_BACKWARD)
-            return self.MOVE_BACKWARD, 0.85
+        # 5. UP (👆 Index finger pointing up)
+        # Index finger extended upward, palm facing forward/upward
+        if extended_count == 1 and index_ext:
+            # Hand should be pointing upward
+            if hand_direction['y'] < -0.4 or pitch < -30:
+                self._update_count(self.UP)
+                return self.UP, 0.94
         
-        # 10. PINKY EXTENDED ALONE -> EMERGENCY STOP
-        if (extended_count == 1 and pinky_ext):
-            self._update_count(self.EMERGENCY_STOP)
-            return self.EMERGENCY_STOP, 0.90
+        # Alternative UP - index and maybe thumb
+        if extended_count <= 2 and index_ext and not middle_ext:
+            if hand_direction['y'] < -0.4 or pitch < -30:
+                self._update_count(self.UP)
+                return self.UP, 0.90
         
-        # 11. HAND TILTED LEFT -> MOVE LEFT
-        if extended_count >= 3:
-            yaw = palm_orientation['yaw']
-            if yaw < -40:
-                self._update_count(self.MOVE_LEFT)
-                return self.MOVE_LEFT, 0.75
+        # 6. DOWN (👇 Hand pointing down)
+        # Palm facing downward, fingers pointing down
+        if extended_count >= 1:
+            if pitch > 40 or hand_direction['y'] > 0.4:  # Tilted down significantly
+                self._update_count(self.DOWN)
+                return self.DOWN, 0.91
         
-        # 12. HAND TILTED RIGHT -> MOVE RIGHT
-        if extended_count >= 3:
-            yaw = palm_orientation['yaw']
-            if yaw > 40:
-                self._update_count(self.MOVE_RIGHT)
-                return self.MOVE_RIGHT, 0.75
+        # 7. STOP (✋ Open Palm with fingers spread - MUST be different from GO_FORWARD)
+        # All fingers extended AND clearly spread apart
+        if extended_count >= 4 and index_ext and middle_ext and ring_ext and pinky_ext:
+            # STOP requires wider finger spread than GO_FORWARD
+            if finger_spread > 0.15:  # Much wider spread required
+                self._update_count(self.STOP)
+                return self.STOP, 0.96
         
-        # 13. TWO FINGERS WITH WIDE SPREAD -> ROTATE
-        if extended_count == 2 and finger_spread > 0.18:
-            # Rotation direction based on which fingers
-            if index_ext and pinky_ext:
-                # Wide V-shape
-                if hand_direction['x'] < 0:
-                    self._update_count(self.ROTATE_LEFT)
-                    return self.ROTATE_LEFT, 0.80
-                else:
-                    self._update_count(self.ROTATE_RIGHT)
-                    return self.ROTATE_RIGHT, 0.80
-        
-        # Default: HOVER if 2-4 fingers extended
-        if 2 <= extended_count <= 4:
-            self._update_count(self.HOVER)
-            return self.HOVER, 0.60
+        # 8. GO_FORWARD (✋ Open Palm - fingers together or slightly apart)
+        # Palm facing camera, all fingers extended, NOT widely spread
+        if extended_count >= 4:
+            # Check palm is facing camera (not tilted sideways)
+            if abs(yaw) < 35 and abs(pitch) < 35:
+                # All main fingers extended
+                if index_ext and middle_ext and ring_ext and pinky_ext:
+                    # GO_FORWARD has smaller spread than STOP
+                    if finger_spread < 0.15:  # Fingers closer together
+                        # More confident if palm is clearly facing camera
+                        confidence = 0.94 if palm_facing_camera else 0.90
+                        self._update_count(self.GO_FORWARD)
+                        return self.GO_FORWARD, confidence
         
         # No clear gesture detected
         return None, 0.0
@@ -212,18 +168,23 @@ class GestureClassifier:
     def get_gesture_description(self, gesture: str) -> str:
         """Get human-readable description of gesture"""
         descriptions = {
-            self.TAKEOFF: "Open palm with all 5 fingers extended",
-            self.LAND: "Closed fist",
-            self.MOVE_FORWARD: "Peace sign (index + middle fingers) pointing forward",
-            self.MOVE_BACKWARD: "Four fingers extended (no thumb)",
-            self.MOVE_LEFT: "Hand tilted left or pointing left",
-            self.MOVE_RIGHT: "Hand tilted right or pointing right",
-            self.ROTATE_LEFT: "L-shape with thumb and index pointing left",
-            self.ROTATE_RIGHT: "L-shape with thumb and index pointing right",
-            self.HOVER: "Three fingers extended (index + middle + ring)",
-            self.EMERGENCY_STOP: "Only pinky finger extended"
+            self.UP: "👆 Up - Index finger pointing upward (Increase altitude)",
+            self.DOWN: "👇 Down - Palm facing downward (Decrease altitude)",
+            self.BACK: "👊 Back - Closed fist, back of hand facing camera (Move backward)",
+            self.GO_FORWARD: "✋ Go Forward - Palm facing camera, fingers together (Move forward)",
+            self.LAND: "👌 Land - Thumb & index forming circle (Land)",
+            self.STOP: "🖐 Stop - Open palm with fingers SPREAD WIDE (Hover/Stop)",
+            self.LEFT: "✊ Left - Closed fist with thumb pointing left (Move left)",
+            self.RIGHT: "✊ Right - Closed fist with thumb pointing right (Move right)"
         }
         return descriptions.get(gesture, "Unknown gesture")
+    
+    def get_all_gestures(self) -> Dict:
+        """Get all available gestures with descriptions"""
+        return {
+            gesture: self.get_gesture_description(gesture)
+            for gesture in self.gesture_labels.values()
+        }
     
     def get_stats(self) -> Dict:
         """Get classification statistics"""

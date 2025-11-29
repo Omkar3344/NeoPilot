@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sliders, 
   Zap, 
@@ -10,6 +10,36 @@ import {
 } from 'lucide-react';
 
 const FlightControls = ({ droneData }) => {
+  const [speedMultiplier, setSpeedMultiplier] = useState(1.0);
+  const [isAdjusting, setIsAdjusting] = useState(false);
+
+  // Sync speed from backend
+  useEffect(() => {
+    if (droneData.speed_multiplier !== undefined) {
+      setSpeedMultiplier(droneData.speed_multiplier);
+    }
+  }, [droneData.speed_multiplier]);
+
+  const handleSpeedChange = async (value) => {
+    const newSpeed = parseFloat(value);
+    setSpeedMultiplier(newSpeed);
+    setIsAdjusting(true);
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/drone/speed/${newSpeed}`, {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        console.log(`Speed set to ${newSpeed}x`);
+      }
+    } catch (error) {
+      console.error('Failed to set speed:', error);
+    } finally {
+      setTimeout(() => setIsAdjusting(false), 500);
+    }
+  };
+
   const controlSettings = [
     {
       label: 'Flight Mode',
@@ -96,6 +126,57 @@ const FlightControls = ({ droneData }) => {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Speed Control Slider */}
+      <div className="space-y-4 mb-6">
+        <h4 className="text-md font-semibold text-slate-300">Movement Speed</h4>
+        <div className="glass-panel p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <Gauge className="h-5 w-5 text-purple-400" />
+              <span className="text-slate-300 text-sm">Speed Multiplier</span>
+            </div>
+            <span className={`text-lg font-bold ${isAdjusting ? 'text-yellow-400 animate-pulse' : 'text-purple-400'}`}>
+              {speedMultiplier.toFixed(1)}x
+            </span>
+          </div>
+          
+          <div className="space-y-2">
+            <input
+              type="range"
+              min="0.5"
+              max="2.0"
+              step="0.1"
+              value={speedMultiplier}
+              onChange={(e) => handleSpeedChange(e.target.value)}
+              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer 
+                       slider-thumb:appearance-none slider-thumb:w-4 slider-thumb:h-4 
+                       slider-thumb:rounded-full slider-thumb:bg-purple-500 
+                       slider-thumb:cursor-pointer slider-thumb:shadow-lg
+                       slider-thumb:hover:bg-purple-400 slider-thumb:transition-colors"
+              style={{
+                background: `linear-gradient(to right, rgb(168, 85, 247) 0%, rgb(168, 85, 247) ${((speedMultiplier - 0.5) / 1.5) * 100}%, rgb(51, 65, 85) ${((speedMultiplier - 0.5) / 1.5) * 100}%, rgb(51, 65, 85) 100%)`
+              }}
+            />
+            <div className="flex justify-between text-xs text-slate-500">
+              <span>0.5x (Slow)</span>
+              <span>1.0x (Normal)</span>
+              <span>2.0x (Fast)</span>
+            </div>
+          </div>
+
+          <div className="mt-3 p-2 bg-purple-500/10 border border-purple-500/30 rounded text-xs text-purple-300">
+            <div className="flex items-center space-x-1">
+              <Zap className="h-3 w-3" />
+              <span>
+                {speedMultiplier < 0.8 ? 'Slow & Precise' : 
+                 speedMultiplier < 1.3 ? 'Balanced Speed' : 
+                 'Fast Movement'}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -71,8 +71,13 @@ class FeatureExtractor:
         
         # Basic landmark features
         features['raw_landmarks'] = landmarks.flatten()
+        features['wrist_position'] = {
+            'x': landmarks[self.WRIST][0],
+            'y': landmarks[self.WRIST][1],
+            'z': landmarks[self.WRIST][2]
+        }
         
-        # Finger extension features
+        # Finger extension features (improved accuracy)
         features['fingers_extended'] = self._get_fingers_extended(landmarks)
         features['extended_count'] = sum(features['fingers_extended'])
         
@@ -85,10 +90,14 @@ class FeatureExtractor:
         # Palm features
         features['palm_center'] = self._get_palm_center(landmarks)
         features['palm_orientation'] = self._get_palm_orientation(landmarks)
+        features['palm_normal'] = self._get_palm_normal(landmarks)  # Enhanced palm direction
         features['palm_size'] = self._get_palm_size(landmarks)
         
         # Hand direction
         features['hand_direction'] = self._get_hand_direction(landmarks)
+        
+        # Thumb direction (for left/right gestures)
+        features['thumb_direction'] = self._get_thumb_direction(landmarks)
         
         # Finger spread
         features['finger_spread'] = self._get_finger_spread(landmarks)
@@ -100,39 +109,69 @@ class FeatureExtractor:
     
     def _get_fingers_extended(self, landmarks: np.ndarray) -> List[bool]:
         """
-        Determine which fingers are extended
+        Determine which fingers are extended with improved accuracy
         
         Returns:
             List of 5 booleans [thumb, index, middle, ring, pinky]
         """
         extended = []
+        wrist = landmarks[self.WRIST]
         
-        # Thumb (special case - check multiple criteria for robustness)
+        # === THUMB (most complex due to different axis) ===
         thumb_tip = landmarks[self.THUMB_TIP]
         thumb_mcp = landmarks[self.THUMB_MCP]
         thumb_ip = landmarks[self.THUMB_IP]
-        wrist = landmarks[self.WRIST]
+        index_mcp = landmarks[self.INDEX_MCP]
         
-        # Check thumb extension using multiple methods
-        # Method 1: Distance from wrist (extended thumb is further from wrist)
-        thumb_wrist_dist = np.linalg.norm(thumb_tip - wrist)
-        thumb_mcp_wrist_dist = np.linalg.norm(thumb_mcp - wrist)
-        thumb_extended_dist = thumb_wrist_dist > thumb_mcp_wrist_dist * 1.3
+        # Method 1: Compare thumb tip to MCP distance from wrist
+        thumb_tip_dist = np.linalg.norm(thumb_tip - wrist)
+        thumb_mcp_dist = np.linalg.norm(thumb_mcp - wrist)
+        thumb_extended_dist = thumb_tip_dist > thumb_mcp_dist * 1.2
         
-        # Method 2: Check if thumb tip is away from palm (x-axis)
-        thumb_extended_x = abs(thumb_tip[0] - wrist[0]) > 0.08
+        # Method 2: Thumb should be away from index MCP (not folded in)
+        thumb_to_index_dist = np.linalg.norm(thumb_tip - index_mcp)
+        thumb_extended_spread = thumb_to_index_dist > 0.08
         
-        # Thumb is extended if either method confirms
-        thumb_extended = thumb_extended_dist or thumb_extended_x
+        # Method 3: Check X-axis distance (thumb extends sideways)
+        thumb_extended_x = abs(thumb_tip[0] - wrist[0]) > 0.07
+        
+        # Thumb is extended if at least 2 of 3 methods confirm
+        thumb_votes = sum([thumb_extended_dist, thumb_extended_spread, thumb_extended_x])
+        thumb_extended = thumb_votes >= 2
         extended.append(thumb_extended)
         
-        # Other fingers (check y-axis - tip should be above MCP)
-        for tip_idx, mcp_idx in zip(
-            [self.INDEX_TIP, self.MIDDLE_TIP, self.RING_TIP, self.PINKY_TIP],
-            [self.INDEX_MCP, self.MIDDLE_MCP, self.RING_MCP, self.PINKY_MCP]
-        ):
-            # Finger is extended if tip is significantly above MCP
-            finger_extended = landmarks[tip_idx][1] < landmarks[mcp_idx][1] - 0.04
+        # === OTHER FINGERS (simpler - they extend vertically) ===
+        finger_data = [
+            (self.INDEX_TIP, self.INDEX_PIP, self.INDEX_MCP),
+            (self.MIDDLE_TIP, self.MIDDLE_PIP, self.MIDDLE_MCP),
+            (self.RING_TIP, self.RING_PIP, self.RING_MCP),
+            (self.PINKY_TIP, self.PINKY_PIP, self.PINKY_MCP)
+        ]
+        
+        for tip_idx, pip_idx, mcp_idx in finger_data:
+            tip = landmarks[tip_idx]
+            pip = landmarks[pip_idx]
+            mcp = landmarks[mcp_idx]
+            
+            # Method 1: Tip should be above MCP (lower Y value)
+            extended_vertical = tip[1] < mcp[1] - 0.03
+            
+            # Method 2: Tip should be far from wrist
+            tip_wrist_dist = np.linalg.norm(tip - wrist)
+            mcp_wrist_dist = np.linalg.norm(mcp - wrist)
+            extended_distance = tip_wrist_dist > mcp_wrist_dist * 1.1
+            
+            # Method 3: Check if finger is straight (angle-based)
+            # Calculate angle at PIP joint
+            v1 = mcp - pip
+            v2 = tip - pip
+            cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
+            angle = np.degrees(np.arccos(np.clip(cos_angle, -1.0, 1.0)))
+            extended_angle = angle > 140  # Finger is straight if angle > 140 degrees
+            
+            # Finger is extended if at least 2 methods confirm
+            finger_votes = sum([extended_vertical, extended_distance, extended_angle])
+            finger_extended = finger_votes >= 2
             extended.append(finger_extended)
         
         return extended
@@ -219,9 +258,48 @@ class FeatureExtractor:
         pitch = np.arctan2(wrist_to_middle[1], wrist_to_middle[2])
         yaw = np.arctan2(wrist_to_middle[0], wrist_to_middle[2])
         
+        # Calculate roll (rotation) using cross product of palm vectors
+        wrist = landmarks[self.WRIST]
+        index_mcp = landmarks[self.INDEX_MCP]
+        pinky_mcp = landmarks[self.PINKY_MCP]
+        
+        # Vector across palm (index to pinky)
+        palm_vector = pinky_mcp - index_mcp
+        roll = np.arctan2(palm_vector[1], palm_vector[0])
+        
         return {
             'pitch': np.degrees(pitch),
-            'yaw': np.degrees(yaw)
+            'yaw': np.degrees(yaw),
+            'roll': np.degrees(roll)
+        }
+    
+    def _get_palm_normal(self, landmarks: np.ndarray) -> Dict[str, float]:
+        """
+        Calculate palm normal vector using cross product
+        More accurate than pitch/yaw for detecting palm facing direction
+        """
+        wrist = landmarks[self.WRIST]
+        index_mcp = landmarks[self.INDEX_MCP]
+        pinky_mcp = landmarks[self.PINKY_MCP]
+        middle_mcp = landmarks[self.MIDDLE_MCP]
+        
+        # Two vectors on the palm plane
+        v1 = index_mcp - wrist  # Vector from wrist to index
+        v2 = pinky_mcp - wrist  # Vector from wrist to pinky
+        
+        # Cross product gives normal vector perpendicular to palm
+        normal = np.cross(v1, v2)
+        normal_normalized = normal / (np.linalg.norm(normal) + 1e-6)
+        
+        # If palm is facing camera, normal.z should be negative
+        # If palm is facing away, normal.z should be positive
+        return {
+            'x': normal_normalized[0],
+            'y': normal_normalized[1],
+            'z': normal_normalized[2],
+            'facing_camera': normal_normalized[2] < -0.3,  # Palm facing forward
+            'facing_away': normal_normalized[2] > 0.3,     # Back of hand visible
+            'magnitude': np.linalg.norm(normal)
         }
     
     def _get_palm_size(self, landmarks: np.ndarray) -> float:
@@ -239,6 +317,21 @@ class FeatureExtractor:
         middle_tip = landmarks[self.MIDDLE_TIP]
         
         direction = middle_tip - wrist
+        direction_norm = direction / (np.linalg.norm(direction) + 1e-6)
+        
+        return {
+            'x': direction_norm[0],
+            'y': direction_norm[1],
+            'z': direction_norm[2]
+        }
+    
+    def _get_thumb_direction(self, landmarks: np.ndarray) -> Dict[str, float]:
+        """Get thumb pointing direction (for left/right detection)"""
+        # Use thumb tip relative to wrist
+        wrist = landmarks[self.WRIST]
+        thumb_tip = landmarks[self.THUMB_TIP]
+        
+        direction = thumb_tip - wrist
         direction_norm = direction / (np.linalg.norm(direction) + 1e-6)
         
         return {
