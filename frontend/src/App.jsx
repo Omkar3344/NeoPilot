@@ -17,7 +17,6 @@ import {
   Gamepad2,
   Maximize2
 } from 'lucide-react';
-import * as THREE from 'three';
 
 // Camera Follow Component - Enhanced with manual angle control
 function CameraRig({ dronePosition, follow, manualOffset }) {
