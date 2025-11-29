@@ -8,7 +8,7 @@ import math
 class DroneSimulator:
     def __init__(self):
         """
-        Initialize the virtual drone with starting parameters and physics
+        Initialize the virtual drone with starting parameters
         """
         # Drone position (x, y, z)
         self.position = {"x": 0.0, "y": 0.0, "z": 0.0}
@@ -16,32 +16,18 @@ class DroneSimulator:
         # Drone rotation (pitch, yaw, roll)
         self.rotation = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
         
-        # Drone velocity
-        self.velocity = {"x": 0.0, "y": 0.0, "z": 0.0}
-        
         # Drone state
         self.is_flying = False
         self.battery_level = 100.0
         self.speed = 0.0
         self.altitude = 0.0
         
-        # Physics parameters
-        self.gravity = -0.05  # Gravity force when no gesture
-        self.drag = 0.95  # Air resistance (0.95 = 5% velocity loss per frame)
-        self.max_velocity = 0.6  # Maximum velocity per axis (increased from 0.3)
-        self.acceleration = 0.04  # Acceleration rate for continuous movement (increased from 0.02)
-        self.speed_multiplier = 4.0  # Adjustable speed multiplier (4.0 = default, fast movement)
-        self.ground_level = 0.0  # Ground position (solid ground level)
-        
-        # Current gesture command (for continuous movement)
-        self.current_gesture: Optional[str] = None
-        self.last_gesture_time = 0
-        self.gesture_timeout = 1.5  # Seconds before stopping continuous movement
-        
         # Movement parameters
-        self.max_speed = 5.0
         self.movement_increment = 0.5
         self.rotation_increment = 15.0
+        
+        # Continuous movement tracking
+        self.active_movements = set()  # Track active movement directions
         
         # Telemetry
         self.total_distance = 0.0
@@ -53,13 +39,10 @@ class DroneSimulator:
         # Movement history for smooth animations
         self.movement_history: List[Dict] = []
         
-        # Boundaries (to prevent drone from going too far)
-        self.boundary = {"x": 15, "y": 10, "z": 15}
-        
         # Drone orientation for forward/backward movement
         self.yaw_angle = 0.0  # Drone facing direction in degrees
         
-        logging.info("Drone simulator initialized with physics")
+        logging.info("Drone simulator initialized")
     
     def calculate_distance(self, pos1: Dict, pos2: Dict) -> float:
         """Calculate 3D distance between two positions"""
@@ -71,97 +54,36 @@ class DroneSimulator:
     
     def update_physics(self):
         """
-        Update drone position based on physics (continuous movement)
-        Called regularly to simulate physics even when no gesture is detected
+        Update position based on active movements and update telemetry
         """
         current_time = time.time()
         dt = current_time - self.last_update_time
         self.last_update_time = current_time
         
-        # Check if current gesture has timed out
-        if self.current_gesture and (current_time - self.last_gesture_time > self.gesture_timeout):
-            self.current_gesture = None
-            logging.info("Gesture timed out, stopping continuous movement")
-        
-        # Apply continuous movement based on current gesture
-        if self.current_gesture and self.is_flying:
-            self._apply_gesture_acceleration(self.current_gesture)
-        
-        # Apply uniform drag to all axes for consistent deceleration
-        drag_factor = self.drag
-        self.velocity["x"] *= drag_factor
-        self.velocity["y"] *= drag_factor
-        self.velocity["z"] *= drag_factor
-        
-        # Gravity disabled for easier testing
-        # if self.is_flying and self.current_gesture not in ["up", "stop"]:
-        #     self.velocity["y"] += self.gravity * dt * 10  # Gravity pulls down
-        
-        # Clamp velocities to max (with speed multiplier)
-        max_vel = self.max_velocity * self.speed_multiplier
-        for axis in ["x", "y", "z"]:
-            if abs(self.velocity[axis]) > max_vel:
-                self.velocity[axis] = math.copysign(max_vel, self.velocity[axis])
-        
-        # Update position based on velocity
-        self.position["x"] += self.velocity["x"]
-        self.position["y"] += self.velocity["y"]
-        self.position["z"] += self.velocity["z"]
-        
-        # SOLID GROUND LEVEL - prevent going below ground at all times
-        if self.position["y"] < self.ground_level:
-            self.position["y"] = self.ground_level
-            self.velocity["y"] = max(0, self.velocity["y"])  # Only allow upward movement
-            # Auto-landing disabled for easier testing
-            # if self.is_flying and abs(self.velocity["x"]) < 0.05 and abs(self.velocity["z"]) < 0.05:
-            #     self.is_flying = False
-            #     self.velocity = {"x": 0.0, "y": 0.0, "z": 0.0}
-            #     logging.info("Drone landed due to gravity")
-        
-        # FREE FLIGHT MODE - Boundaries removed as per user request
-        # No spatial constraints, drone can fly freely in any direction
+        # Apply continuous movement based on active directions
+        # Using fixed increment per update for consistent speed (assuming ~30 FPS)
+        if self.is_flying and self.active_movements:
+            # Scale movement by time delta to maintain consistent speed regardless of frame rate
+            increment = self.movement_increment * (dt * 30)  # 30 updates per second equivalent
+            
+            if "go_forward" in self.active_movements:
+                self.position["z"] += increment
+            if "back" in self.active_movements:
+                self.position["z"] -= increment
+            if "left" in self.active_movements:
+                self.position["x"] -= increment
+            if "right" in self.active_movements:
+                self.position["x"] += increment
+            if "up" in self.active_movements:
+                self.position["y"] += increment
+            if "down" in self.active_movements:
+                if self.position["y"] > 0.1:
+                    self.position["y"] -= increment
+                else:
+                    self.active_movements.discard("down")
         
         # Update telemetry
         self.update_telemetry()
-    
-    def _apply_gesture_acceleration(self, gesture: str):
-        """Apply acceleration based on current gesture with correct axes - EQUAL SPEED FOR ALL DIRECTIONS"""
-        accel = self.acceleration * self.speed_multiplier
-        
-        # Forward/Backward based on drone facing direction
-        if gesture == "go_forward":
-            # Move in the direction drone is facing (Z-axis positive)
-            self.velocity["z"] += accel
-        elif gesture == "back":
-            # Move opposite to drone facing direction (Z-axis negative)
-            self.velocity["z"] -= accel
-        
-        # Left/Right movement (X-axis) - SAME SPEED AS FORWARD/BACK
-        elif gesture == "left":
-            self.velocity["x"] -= accel  # Move left (negative X)
-        elif gesture == "right":
-            self.velocity["x"] += accel  # Move right (positive X)
-        
-        # Up/Down movement (Y-axis = altitude) - SAME SPEED AS OTHER DIRECTIONS
-        elif gesture == "up":
-            self.velocity["y"] += accel  # Move up (increase altitude) - removed 1.5x multiplier
-        elif gesture == "down":
-            # Only allow downward movement if above ground level - SAME SPEED AS OTHER DIRECTIONS
-            if self.position["y"] > self.ground_level + 0.1:
-                self.velocity["y"] -= accel  # Move down (decrease altitude) - same speed as other axes
-            else:
-                self.velocity["y"] = 0  # Stop downward movement at ground
-        
-        # Hover in place
-        elif gesture == "stop":
-            # Stop gesture slows down drone to hover - SAME DECELERATION AS DRAG
-            self.velocity["x"] *= 0.95  # Match the drag coefficient
-            self.velocity["z"] *= 0.95
-            # Maintain hover altitude around 2.0
-            if self.position["y"] < 2.0:
-                self.velocity["y"] += accel * 0.5  # Gentle altitude correction
-            elif self.position["y"] > 2.5:
-                self.velocity["y"] -= accel * 0.5
     
     def update_telemetry(self):
         """Update flight telemetry data"""
@@ -171,15 +93,11 @@ class DroneSimulator:
             self.total_distance += distance_increment
             self.last_position = self.position.copy()
             
-            # Update speed
-            self.speed = math.sqrt(
-                self.velocity["x"] ** 2 + 
-                self.velocity["y"] ** 2 + 
-                self.velocity["z"] ** 2
-            )
+            # Update speed (set to 0 since no velocity tracking)
+            self.speed = 0.0
             
-            # Update altitude
-            self.altitude = max(0, self.position["z"])
+            # Update altitude (using y-axis as altitude)
+            self.altitude = max(0, self.position["y"])
             
             # Update flight time
             if self.start_time:
@@ -192,38 +110,34 @@ class DroneSimulator:
     def execute_gesture_command(self, gesture: str, confidence: float) -> Dict:
         """
         Execute drone command based on recognized gesture
-        Now supports continuous movement - gestures set the movement direction
-        until a new gesture is recognized or timeout occurs
+        Sets continuous movement direction
         """
         if confidence < 0.7:  # Confidence threshold
             return self.get_status()
         
         command_executed = True
         message = f"Executing {gesture}"
-        current_time = time.time()
         
-        # STOP/HOVER - Open palm (hover in place, counter gravity)
+        # STOP/HOVER - Takeoff or hover
         if gesture == "stop":
-            if self.is_flying:
-                self.current_gesture = "stop"
-                self.last_gesture_time = current_time
-                message = "Drone hovering (stopped)"
-            else:
+            if not self.is_flying:
                 # Takeoff if not flying
                 self.is_flying = True
                 self.position["y"] = 2.0
-                self.current_gesture = "stop"
-                self.last_gesture_time = current_time
                 self.start_time = time.time()
+                self.active_movements.clear()
                 message = "Drone taking off"
+            else:
+                # Stop all movement
+                self.active_movements.clear()
+                message = "Drone hovering (stopped)"
                 
-        # LAND - OK sign (land the drone, cancel continuous movement)
+        # LAND - Land the drone
         elif gesture == "land":
             if self.is_flying:
-                self.current_gesture = None
                 self.is_flying = False
                 self.position["y"] = 0.0
-                self.velocity = {"x": 0.0, "y": 0.0, "z": 0.0}
+                self.active_movements.clear()
                 message = "Drone landing"
             else:
                 message = "Drone already on ground"
@@ -231,34 +145,32 @@ class DroneSimulator:
                 
         # Movement gestures - set continuous movement direction
         elif gesture == "go_forward" and self.is_flying:
-            self.current_gesture = "go_forward"
-            self.last_gesture_time = current_time
-            message = "Continuously moving forward"
+            self.active_movements.add("go_forward")
+            message = "Moving forward continuously"
             
         elif gesture == "back" and self.is_flying:
-            self.current_gesture = "back"
-            self.last_gesture_time = current_time
-            message = "Continuously moving backward"
+            self.active_movements.add("back")
+            message = "Moving backward continuously"
             
         elif gesture == "left" and self.is_flying:
-            self.current_gesture = "left"
-            self.last_gesture_time = current_time
-            message = "Continuously moving left"
+            self.active_movements.add("left")
+            message = "Moving left continuously"
             
         elif gesture == "right" and self.is_flying:
-            self.current_gesture = "right"
-            self.last_gesture_time = current_time
-            message = "Continuously moving right"
+            self.active_movements.add("right")
+            message = "Moving right continuously"
             
         elif gesture == "up" and self.is_flying:
-            self.current_gesture = "up"
-            self.last_gesture_time = current_time
-            message = "Continuously moving up"
+            self.active_movements.add("up")
+            message = "Moving up continuously"
             
         elif gesture == "down" and self.is_flying:
-            self.current_gesture = "down"
-            self.last_gesture_time = current_time
-            message = "Continuously moving down"
+            if self.position["y"] > 0.1:
+                self.active_movements.add("down")
+                message = "Moving down continuously"
+            else:
+                message = "Cannot move below ground level"
+                command_executed = False
             
         else:
             command_executed = False
@@ -286,27 +198,23 @@ class DroneSimulator:
             "message": message
         }
     
+    def stop_movement(self, direction: str):
+        """Stop movement in a specific direction"""
+        self.active_movements.discard(direction)
+    
     def get_status(self) -> Dict:
         """Get current drone status and telemetry"""
         return {
             "position": self.position,
             "rotation": self.rotation,
-            "velocity": self.velocity,
             "is_flying": self.is_flying,
             "battery_level": round(self.battery_level, 1),
             "speed": round(self.speed, 2),
             "altitude": round(self.altitude, 2),
             "total_distance": round(self.total_distance, 2),
             "flight_time": round(self.flight_time, 2) if self.flight_time else 0,
-            "movement_history": self.movement_history[-10:],  # Last 10 movements
-            "current_gesture": self.current_gesture,  # Add current continuous gesture
-            "speed_multiplier": self.speed_multiplier  # Current speed setting
+            "movement_history": self.movement_history[-10:]  # Last 10 movements
         }
-    
-    def set_speed_multiplier(self, multiplier: float):
-        """Set speed multiplier (0.5 to 2.0)"""
-        self.speed_multiplier = max(0.5, min(2.0, multiplier))
-        logging.info(f"Speed multiplier set to {self.speed_multiplier}x")
     
     def reset(self):
         """Reset drone to initial state"""

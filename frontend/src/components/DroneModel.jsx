@@ -31,13 +31,24 @@ const DroneModel = ({ position, rotation, isFlying }) => {
     (rotation.roll || 0) * Math.PI / 180
   ];
 
-  // Animate propellers and smooth position interpolation
-  useFrame((state) => {
-    // Smooth position interpolation for continuous movement
+  // Animate propellers and smooth position interpolation with easing
+  useFrame((state, delta) => {
+    // Smooth position interpolation with exponential easing for natural movement
     if (droneRef.current) {
-      currentPosition.current[0] += (targetPosition.current[0] - currentPosition.current[0]) * 0.15;
-      currentPosition.current[1] += (targetPosition.current[1] - currentPosition.current[1]) * 0.15;
-      currentPosition.current[2] += (targetPosition.current[2] - currentPosition.current[2]) * 0.15;
+      // Use delta time for frame-rate independent interpolation
+      const lerpFactor = Math.min(1.0, 0.2 + delta * 5); // Adaptive lerp based on frame time
+      
+      // Exponential easing for smoother transitions
+      const easeOut = (t) => 1 - Math.pow(1 - t, 3); // Cubic ease-out
+      
+      const dx = targetPosition.current[0] - currentPosition.current[0];
+      const dy = targetPosition.current[1] - currentPosition.current[1];
+      const dz = targetPosition.current[2] - currentPosition.current[2];
+      
+      // Apply easing to each axis
+      currentPosition.current[0] += dx * lerpFactor * easeOut(Math.abs(dx) / 10);
+      currentPosition.current[1] += dy * lerpFactor * easeOut(Math.abs(dy) / 10);
+      currentPosition.current[2] += dz * lerpFactor * easeOut(Math.abs(dz) / 10);
       
       droneRef.current.position.set(
         currentPosition.current[0],
@@ -45,24 +56,35 @@ const DroneModel = ({ position, rotation, isFlying }) => {
         currentPosition.current[2]
       );
       
-      // Add subtle hover animation when flying
+      // Add subtle hover animation when flying with smoother sine wave
       if (isFlying) {
-        droneRef.current.position.y += Math.sin(state.clock.elapsedTime * 3) * 0.015;
+        const hoverOffset = Math.sin(state.clock.elapsedTime * 2.5) * 0.012;
+        const smoothHover = hoverOffset * (1 - Math.abs(dy) / 5); // Reduce hover when moving vertically
+        droneRef.current.position.y += smoothHover;
       }
     }
     
-    // Propeller rotation
+    // Propeller rotation with variable speed based on flight state
     if (propellerRefs.current) {
-      propellerRefs.current.forEach((propeller) => {
+      const baseSpeed = isFlying ? 0.8 : 0.05;
+      // Add slight variation to each propeller for realism
+      propellerRefs.current.forEach((propeller, index) => {
         if (propeller) {
-          propeller.rotation.y += isFlying ? 0.8 : 0.05; // Fast rotation when flying
+          const variation = 1 + (index % 2) * 0.1; // Alternate propellers slightly
+          propeller.rotation.y += baseSpeed * variation * (delta * 60); // Frame-rate independent
         }
       });
     }
     
-    // Animate glow
+    // Animate glow with smoother pulsing
     if (glowRef.current && isFlying) {
-      glowRef.current.material.opacity = 0.3 + Math.sin(state.clock.elapsedTime * 2) * 0.2;
+      const pulseSpeed = 2;
+      const baseOpacity = 0.3;
+      const pulseAmplitude = 0.2;
+      // Use smoother easing for pulse
+      const pulse = Math.sin(state.clock.elapsedTime * pulseSpeed);
+      const easedPulse = pulse * (0.5 + 0.5 * Math.cos(state.clock.elapsedTime * 0.5)); // Double wave for smoother effect
+      glowRef.current.material.opacity = baseOpacity + easedPulse * pulseAmplitude;
     }
   });
 
@@ -87,18 +109,18 @@ const DroneModel = ({ position, rotation, isFlying }) => {
       {/* Main Body - Sleeker design */}
       <RoundedBox args={[1.8, 0.25, 1.8]} radius={0.05} position={[0, 0, 0]}>
         <meshStandardMaterial 
-          color={isFlying ? "#2563eb" : "#475569"} 
+          color="#ffffff" 
           metalness={0.8}
           roughness={0.2}
-          emissive={isFlying ? "#1e40af" : "#000000"}
-          emissiveIntensity={isFlying ? 0.3 : 0}
+          emissive="#000000"
+          emissiveIntensity={0}
         />
       </RoundedBox>
       
       {/* Top detail panel */}
       <RoundedBox args={[1.2, 0.08, 1.2]} radius={0.02} position={[0, 0.17, 0]}>
         <meshStandardMaterial 
-          color={isFlying ? "#1e3a8a" : "#334155"} 
+          color="#ffffff" 
           metalness={0.9}
           roughness={0.1}
         />
@@ -107,7 +129,7 @@ const DroneModel = ({ position, rotation, isFlying }) => {
       {/* Center Hub - More prominent */}
       <Cylinder args={[0.45, 0.5, 0.25]} position={[0, 0.13, 0]}>
         <meshStandardMaterial 
-          color="#0f172a" 
+          color="#ffffff" 
           metalness={0.9}
           roughness={0.1}
         />
@@ -115,7 +137,7 @@ const DroneModel = ({ position, rotation, isFlying }) => {
       
       {/* Top antenna */}
       <Cylinder args={[0.02, 0.02, 0.4]} position={[0, 0.45, 0]}>
-        <meshStandardMaterial color="#64748b" metalness={0.8} />
+        <meshStandardMaterial color="#ffffff" metalness={0.8} />
       </Cylinder>
       <Sphere args={[0.05]} position={[0, 0.65, 0]}>
         <meshStandardMaterial 
@@ -136,7 +158,7 @@ const DroneModel = ({ position, rotation, isFlying }) => {
           {/* Arm - Carbon fiber look */}
           <RoundedBox args={[0.7, 0.12, 0.12]} radius={0.02} position={arm.pos}>
             <meshStandardMaterial 
-              color="#1e293b" 
+              color="#ffffff" 
               metalness={0.7} 
               roughness={0.3}
             />
@@ -145,7 +167,7 @@ const DroneModel = ({ position, rotation, isFlying }) => {
           {/* Motor housing */}
           <Cylinder args={[0.18, 0.22, 0.35]} position={[arm.pos[0], arm.pos[1] + 0.18, arm.pos[2]]}>
             <meshStandardMaterial 
-              color="#0f172a" 
+              color="#ffffff" 
               metalness={0.9} 
               roughness={0.1}
             />
@@ -154,10 +176,10 @@ const DroneModel = ({ position, rotation, isFlying }) => {
           {/* Motor top cap */}
           <Cylinder args={[0.15, 0.15, 0.05]} position={[arm.pos[0], arm.pos[1] + 0.38, arm.pos[2]]}>
             <meshStandardMaterial 
-              color={arm.color}
+              color="#ffffff"
               metalness={0.8}
-              emissive={isFlying ? arm.color : "#000000"}
-              emissiveIntensity={isFlying ? 0.5 : 0}
+              emissive="#000000"
+              emissiveIntensity={0}
             />
           </Cylinder>
           
@@ -187,7 +209,7 @@ const DroneModel = ({ position, rotation, isFlying }) => {
             </Box>
             {/* Center hub */}
             <Cylinder args={[0.08, 0.08, 0.06]}>
-              <meshStandardMaterial color="#1e293b" metalness={0.9} />
+              <meshStandardMaterial color="#ffffff" metalness={0.9} />
             </Cylinder>
           </group>
         </group>
@@ -202,11 +224,11 @@ const DroneModel = ({ position, rotation, isFlying }) => {
       ].map((pos, index) => (
         <group key={`landing-${index}`}>
           <Cylinder args={[0.04, 0.04, 0.5]} position={pos}>
-            <meshStandardMaterial color="#475569" metalness={0.7} />
+            <meshStandardMaterial color="#ffffff" metalness={0.7} />
           </Cylinder>
           {/* Landing foot */}
           <Sphere args={[0.06]} position={[pos[0], pos[1] - 0.25, pos[2]]}>
-            <meshStandardMaterial color="#334155" metalness={0.6} />
+            <meshStandardMaterial color="#ffffff" metalness={0.6} />
           </Sphere>
         </group>
       ))}
@@ -242,15 +264,15 @@ const DroneModel = ({ position, rotation, isFlying }) => {
       <group position={[0, -0.15, 0.7]}>
         {/* Gimbal mount */}
         <Cylinder args={[0.08, 0.08, 0.1]} rotation={[Math.PI / 2, 0, 0]}>
-          <meshStandardMaterial color="#1e293b" metalness={0.9} />
+          <meshStandardMaterial color="#ffffff" metalness={0.9} />
         </Cylinder>
         {/* Camera body */}
         <RoundedBox args={[0.25, 0.2, 0.25]} radius={0.03} position={[0, 0, 0.15]}>
-          <meshStandardMaterial color="#0f172a" metalness={0.8} roughness={0.2} />
+          <meshStandardMaterial color="#ffffff" metalness={0.8} roughness={0.2} />
         </RoundedBox>
         {/* Camera lens */}
         <Cylinder args={[0.08, 0.08, 0.1]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.3]}>
-          <meshStandardMaterial color="#1e293b" metalness={0.9} roughness={0.1} />
+          <meshStandardMaterial color="#ffffff" metalness={0.9} roughness={0.1} />
         </Cylinder>
         {/* Lens glass */}
         <Cylinder args={[0.06, 0.06, 0.02]} rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.35]}>

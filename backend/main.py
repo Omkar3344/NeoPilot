@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
+from pydantic import BaseModel
 import cv2
 import asyncio
 import json
@@ -229,21 +230,45 @@ async def set_sensitivity(level: str):
     gesture_pipeline.adjust_sensitivity(level)
     return {"message": f"Sensitivity set to {level}", "level": level}
 
-@app.post("/drone/speed/{multiplier}")
-async def set_drone_speed(multiplier: float):
+class DroneCommand(BaseModel):
+    command: str
+
+@app.post("/drone/command")
+async def execute_drone_command(cmd: DroneCommand):
     """
-    Set drone movement speed multiplier
-    Range: 0.1 (very slow) to 10.0 (very fast)
-    Default: 4.0 (fast)
+    Execute a drone command via keyboard input
+    Accepts commands: "go_forward", "back", "left", "right", "up", "down", "stop", "land"
     """
-    if multiplier < 0.1 or multiplier > 10.0:
-        raise HTTPException(status_code=400, detail="Speed multiplier must be between 0.1 and 10.0")
+    valid_commands = ["go_forward", "back", "left", "right", "up", "down", "stop", "land"]
+    command = cmd.command
     
-    drone_simulator.set_speed_multiplier(multiplier)
-    return {
-        "message": f"Drone speed set to {multiplier}x",
-        "speed_multiplier": multiplier
-    }
+    if command not in valid_commands:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid command. Valid commands are: {', '.join(valid_commands)}"
+        )
+    
+    # Execute command with confidence 1.0 (keyboard input is reliable)
+    result = drone_simulator.execute_gesture_command(command, confidence=1.0)
+    logger.info(f"Keyboard command executed: {command}")
+    
+    return result
+
+@app.post("/drone/stop/{direction}")
+async def stop_drone_movement(direction: str):
+    """
+    Stop movement in a specific direction
+    Accepts: "go_forward", "back", "left", "right", "up", "down"
+    """
+    valid_directions = ["go_forward", "back", "left", "right", "up", "down"]
+    if direction not in valid_directions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid direction. Valid directions are: {', '.join(valid_directions)}"
+        )
+    
+    drone_simulator.stop_movement(direction)
+    return {"message": f"Stopped movement: {direction}", **drone_simulator.get_status()}
 
 @app.get("/camera/status")
 async def get_camera_status():
@@ -337,7 +362,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.info(f"Executing command for new gesture: {gesture_name} (confidence: {confidence:.2f})")
                 drone_response = drone_simulator.execute_gesture_command(gesture_name, confidence)
             
-            # Always update physics for continuous movement and gravity
+            # Update telemetry
             drone_simulator.update_physics()
             
             # Resize frame for faster transmission (optional - maintains aspect ratio)

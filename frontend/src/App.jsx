@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Grid, Text, Line } from '@react-three/drei';
+import { motion, AnimatePresence } from 'framer-motion';
 import * as THREE from 'three';
 import DroneModel from './components/DroneModel';
 import WebcamFeed from './components/WebcamFeed';
@@ -18,16 +19,64 @@ import {
   Maximize2
 } from 'lucide-react';
 
-// Camera Follow Component - Enhanced with manual angle control
-function CameraRig({ dronePosition, follow, manualOffset }) {
+// Camera Follow Component - Enhanced with multiple camera modes
+function CameraRig({ dronePosition, follow, cameraMode, droneRotation }) {
   const { camera } = useThree();
   const targetPosition = useRef(new THREE.Vector3(10, 12, 10));
   const targetLookAt = useRef(new THREE.Vector3(0, 0, 0));
+  const modeTransitionRef = useRef(1.0);
   
-  useFrame(() => {
+  useFrame((state, delta) => {
     if (follow && dronePosition) {
-      // Use manual offset or default offset
-      const baseOffset = manualOffset || new THREE.Vector3(10, 12, 10);
+      let baseOffset;
+      let lookAtOffset = new THREE.Vector3(0, 0, 0);
+      
+      // Calculate camera position based on mode
+      switch (cameraMode) {
+        case 'first-person':
+          // Camera attached to drone, looking forward
+          baseOffset = new THREE.Vector3(0, 0.2, 0); // Slightly above drone center
+          lookAtOffset = new THREE.Vector3(0, 0, 5); // Look forward
+          break;
+          
+        case 'chase':
+          // Following behind drone
+          const yawRad = (droneRotation?.yaw || 0) * Math.PI / 180;
+          const chaseDistance = 8;
+          baseOffset = new THREE.Vector3(
+            Math.sin(yawRad + Math.PI) * chaseDistance,
+            4,
+            Math.cos(yawRad + Math.PI) * chaseDistance
+          );
+          lookAtOffset = new THREE.Vector3(0, 0, 0);
+          break;
+          
+        case 'cinematic':
+          // Smooth orbiting camera with dynamic angles
+          const orbitRadius = 15;
+          const orbitAngle = state.clock.elapsedTime * 0.3;
+          const orbitHeight = 8 + Math.sin(state.clock.elapsedTime * 0.5) * 2;
+          baseOffset = new THREE.Vector3(
+            Math.cos(orbitAngle) * orbitRadius,
+            orbitHeight,
+            Math.sin(orbitAngle) * orbitRadius
+          );
+          lookAtOffset = new THREE.Vector3(0, 0, 0);
+          break;
+          
+        case 'top-down':
+          // Directly above drone
+          baseOffset = new THREE.Vector3(0, 20, 0);
+          lookAtOffset = new THREE.Vector3(0, 0, 0);
+          break;
+          
+        case 'default':
+        default:
+          // Default diagonal view
+          baseOffset = new THREE.Vector3(10, 12, 10);
+          lookAtOffset = new THREE.Vector3(0, 0, 0);
+          break;
+      }
       
       // Calculate distance from origin for dynamic adjustment
       const distance = Math.sqrt(
@@ -35,33 +84,45 @@ function CameraRig({ dronePosition, follow, manualOffset }) {
         dronePosition[2] * dronePosition[2]
       );
       
-      // Aggressive scaling to keep drone in view even at far distances
-      const scaleFactor = Math.max(1.0, distance / 12);
-      const scaledOffset = baseOffset.clone().multiplyScalar(scaleFactor);
+      // Scale offset for far distances (except first-person and top-down)
+      if (cameraMode !== 'first-person' && cameraMode !== 'top-down') {
+        const scaleFactor = Math.max(1.0, distance / 12);
+        baseOffset.multiplyScalar(scaleFactor);
+      }
       
+      // Calculate target position
       targetPosition.current.set(
-        dronePosition[0] + scaledOffset.x,
-        dronePosition[1] + scaledOffset.y,
-        dronePosition[2] + scaledOffset.z
+        dronePosition[0] + baseOffset.x,
+        dronePosition[1] + baseOffset.y,
+        dronePosition[2] + baseOffset.z
       );
       
       // Ensure camera never goes below ground level
-      if (targetPosition.current.y < 2.0) {
+      if (targetPosition.current.y < 2.0 && cameraMode !== 'first-person') {
         targetPosition.current.y = 2.0;
       }
       
+      // Calculate look-at position
       targetLookAt.current.set(
-        dronePosition[0],
-        dronePosition[1],
-        dronePosition[2]
+        dronePosition[0] + lookAtOffset.x,
+        dronePosition[1] + lookAtOffset.y,
+        dronePosition[2] + lookAtOffset.z
       );
       
-      // Smooth camera follow with faster lerp for far distances
-      const lerpSpeed = distance > 30 ? 0.15 : distance > 15 ? 0.12 : 0.08;
+      // Smooth camera follow with mode-specific lerp speeds
+      let lerpSpeed;
+      if (cameraMode === 'first-person') {
+        lerpSpeed = 0.3; // Very responsive for first-person
+      } else if (cameraMode === 'cinematic') {
+        lerpSpeed = 0.05; // Slower for cinematic effect
+      } else {
+        lerpSpeed = distance > 30 ? 0.15 : distance > 15 ? 0.12 : 0.08;
+      }
+      
       camera.position.lerp(targetPosition.current, lerpSpeed);
       
-      // Keep camera above ground at all times
-      if (camera.position.y < 1.5) {
+      // Keep camera above ground at all times (except first-person)
+      if (camera.position.y < 1.5 && cameraMode !== 'first-person') {
         camera.position.y = 1.5;
       }
       
@@ -69,7 +130,7 @@ function CameraRig({ dronePosition, follow, manualOffset }) {
       const currentLookAt = new THREE.Vector3();
       camera.getWorldDirection(currentLookAt);
       currentLookAt.multiplyScalar(10).add(camera.position);
-      currentLookAt.lerp(targetLookAt.current, 0.08);
+      currentLookAt.lerp(targetLookAt.current, lerpSpeed * 1.2);
       camera.lookAt(currentLookAt);
     }
   });
@@ -95,7 +156,7 @@ function App() {
   const [webcamFrame, setWebcamFrame] = useState(null);
   const [showWebcam, setShowWebcam] = useState(true);
   const [cameraFollow, setCameraFollow] = useState(true);
-  const [manualCameraOffset, setManualCameraOffset] = useState(null);
+  const [cameraMode, setCameraMode] = useState('default');
   const [activeTab, setActiveTab] = useState('telemetry');
   const [cameraSource, setCameraSource] = useState('laptop');
   const [phoneIpAddress, setPhoneIpAddress] = useState('');
@@ -103,6 +164,7 @@ function App() {
   const [realisticBackground, setRealisticBackground] = useState(false);
   
   const wsRef = useRef(null);
+  const pressedKeysRef = useRef(new Set());
 
   // WebSocket connection
   useEffect(() => {
@@ -163,6 +225,138 @@ function App() {
       if (wsRef.current) {
         wsRef.current.close();
       }
+    };
+  }, []);
+
+  // Send keyboard command to backend
+  const sendKeyboardCommand = async (command) => {
+    try {
+      const response = await fetch('http://127.0.0.1:8000/drone/command', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ command }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Update drone data if status is returned
+        if (data.position) {
+          setDroneData(data);
+        }
+      } else {
+        const error = await response.json();
+        console.error('Failed to execute command:', error);
+      }
+    } catch (error) {
+      console.error('Error sending keyboard command:', error);
+    }
+  };
+
+  // Stop movement in a specific direction
+  const stopMovement = async (direction) => {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/drone/stop/${direction}`, {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.position) {
+          setDroneData(data);
+        }
+      }
+    } catch (error) {
+      console.error('Error stopping movement:', error);
+    }
+  };
+
+  // Keyboard controls
+  useEffect(() => {
+    const keyMap = {
+      'w': 'go_forward',
+      'W': 'go_forward',
+      'ArrowUp': 'go_forward',
+      's': 'back',
+      'S': 'back',
+      'ArrowDown': 'back',
+      'a': 'left',
+      'A': 'left',
+      'ArrowLeft': 'left',
+      'd': 'right',
+      'D': 'right',
+      'ArrowRight': 'right',
+      ' ': 'stop', // Space key
+      'Space': 'stop', // Space code
+      'z': 'up',
+      'Z': 'up',
+      'x': 'down',
+      'X': 'down',
+      'l': 'land',
+      'L': 'land',
+    };
+
+    const handleKeyDown = (event) => {
+      const key = event.key;
+      const code = event.code;
+      
+      // Skip if key is already pressed (prevent repeat)
+      if (pressedKeysRef.current.has(key) || pressedKeysRef.current.has(code)) {
+        return;
+      }
+
+      // Map key to command (check code first for special keys like Space, Shift)
+      let command = null;
+      if (keyMap[code]) {
+        command = keyMap[code];
+      } else if (keyMap[key]) {
+        command = keyMap[key];
+      }
+
+      if (command) {
+        // Prevent default browser behavior for these keys
+        event.preventDefault();
+        
+        // Add key to pressed set
+        pressedKeysRef.current.add(key);
+        pressedKeysRef.current.add(code);
+
+        // Send command (starts continuous movement for movement commands)
+        sendKeyboardCommand(command);
+      }
+    };
+
+    const handleKeyUp = (event) => {
+      const key = event.key;
+      const code = event.code;
+      
+      // Map key to command
+      let command = null;
+      if (keyMap[code]) {
+        command = keyMap[code];
+      } else if (keyMap[key]) {
+        command = keyMap[key];
+      }
+
+      // Stop movement for movement commands (not for stop/land)
+      if (command && ['go_forward', 'back', 'left', 'right', 'up', 'down'].includes(command)) {
+        stopMovement(command);
+      }
+      
+      // Remove key from pressed set
+      pressedKeysRef.current.delete(key);
+      pressedKeysRef.current.delete(code);
+    };
+
+    // Add event listeners
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
 
@@ -263,45 +457,30 @@ function App() {
               <Maximize2 className="h-5 w-5" />
             </button>
             
-            {/* Camera Angle Presets - Only show when following */}
+            {/* Camera Mode Selector - Only show when following */}
             {cameraFollow && (
               <div className="flex items-center space-x-1 bg-slate-800/50 rounded-lg p-1 border border-slate-700">
                 <span className="text-xs text-slate-400 px-2">View:</span>
-                <button
-                  onClick={() => setManualCameraOffset(new THREE.Vector3(10, 12, 10))}
-                  className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition"
-                  title="Default Diagonal View"
-                >
-                  Default
-                </button>
-                <button
-                  onClick={() => setManualCameraOffset(new THREE.Vector3(0, 12, 18))}
-                  className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition"
-                  title="Front View"
-                >
-                  Front
-                </button>
-                <button
-                  onClick={() => setManualCameraOffset(new THREE.Vector3(18, 10, 0))}
-                  className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition"
-                  title="Side View"
-                >
-                  Side
-                </button>
-                <button
-                  onClick={() => setManualCameraOffset(new THREE.Vector3(0, 25, 0))}
-                  className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition"
-                  title="Top Down View"
-                >
-                  Top
-                </button>
-                <button
-                  onClick={() => setManualCameraOffset(new THREE.Vector3(12, 4, 12))}
-                  className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition"
-                  title="Low Angle View"
-                >
-                  Low
-                </button>
+                {[
+                  { id: 'default', label: 'Default', title: 'Default Diagonal View' },
+                  { id: 'first-person', label: 'FPV', title: 'First-Person View' },
+                  { id: 'chase', label: 'Chase', title: 'Chase Camera' },
+                  { id: 'cinematic', label: 'Cinema', title: 'Cinematic Orbit' },
+                  { id: 'top-down', label: 'Top', title: 'Top-Down View' }
+                ].map(mode => (
+                  <button
+                    key={mode.id}
+                    onClick={() => setCameraMode(mode.id)}
+                    className={`px-2 py-1 text-xs rounded transition ${
+                      cameraMode === mode.id
+                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                        : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                    }`}
+                    title={mode.title}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -353,15 +532,16 @@ function App() {
               maxPolarAngle={Math.PI / 2.1}
             />
             
-            {/* Camera Follow System with Manual Control */}
+            {/* Camera Follow System with Multiple Modes */}
             <CameraRig 
               dronePosition={[
                 droneData.position.x || 0,
-                (droneData.position.z || 0) + (droneData.is_flying ? 2 : 0.5),
-                droneData.position.y || 0
+                droneData.position.y || 0,
+                droneData.position.z || 0
               ]}
               follow={cameraFollow}
-              manualOffset={manualCameraOffset}
+              cameraMode={cameraMode}
+              droneRotation={droneData.rotation}
             />
             
             {/* Enhanced Lighting - Better atmosphere */}
@@ -604,7 +784,7 @@ function App() {
 
           {/* Current Gesture Overlay */}
           {currentGesture && currentGesture.name && (
-            <div className="absolute top-4 left-4 glass-panel p-4 min-w-[250px]">
+            <div className="absolute top-4 left-[240px] glass-panel p-4 min-w-[250px]">
               <div className="flex items-center space-x-3">
                 <div className="relative">
                   <div className="pulse-ring w-4 h-4"></div>
@@ -642,6 +822,7 @@ function App() {
               </div>
             </div>
           </div>
+          
         </div>
 
         {/* Right Panel - Controls and Info */}
@@ -665,12 +846,19 @@ function App() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex-1 flex items-center justify-center space-x-2 py-3 transition-colors ${
+                  className={`flex-1 flex items-center justify-center space-x-2 py-3 transition-colors relative ${
                     activeTab === tab.id
-                      ? 'bg-blue-500/20 text-blue-400 border-b-2 border-blue-500'
+                      ? 'text-blue-400'
                       : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
                   }`}
                 >
+                  {activeTab === tab.id && (
+                    <motion.div
+                      className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500"
+                      layoutId="activeTab"
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
                   <Icon className="h-4 w-4" />
                   <span className="text-sm">{tab.label}</span>
                 </button>
@@ -679,16 +867,42 @@ function App() {
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto">
-            {activeTab === 'telemetry' && (
-              <TelemetryPanel droneData={droneData} />
-            )}
-            {activeTab === 'controls' && (
-              <FlightControls droneData={droneData} />
-            )}
-            {activeTab === 'gestures' && (
-              <GestureGuide />
-            )}
+          <div className="flex-1 overflow-y-auto relative">
+            <AnimatePresence mode="wait">
+              {activeTab === 'telemetry' && (
+                <motion.div
+                  key="telemetry"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <TelemetryPanel droneData={droneData} />
+                </motion.div>
+              )}
+              {activeTab === 'controls' && (
+                <motion.div
+                  key="controls"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <FlightControls droneData={droneData} />
+                </motion.div>
+              )}
+              {activeTab === 'gestures' && (
+                <motion.div
+                  key="gestures"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <GestureGuide />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
