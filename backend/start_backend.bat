@@ -16,8 +16,8 @@ pip install -r requirements.txt
 
 echo.
 echo Starting FastAPI server...
-echo Backend will be available at: http://127.0.0.1:8000
-echo WebSocket endpoint: ws://127.0.0.1:8000/ws
+echo Backend will be available at: http://127.0.0.1:8001
+echo WebSocket endpoint: ws://127.0.0.1:8001/ws
 echo.
 
 python main.py

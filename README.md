@@ -157,9 +157,9 @@ python main.py
 ```
 
 **Backend Services:**
-- 🌐 **API Server**: http://127.0.0.1:8000
-- 🔌 **WebSocket**: ws://127.0.0.1:8000/ws
-- 📚 **API Documentation**: http://127.0.0.1:8000/docs
+- 🌐 **API Server**: http://127.0.0.1:8001
+- 🔌 **WebSocket**: ws://127.0.0.1:8001/ws
+- 📚 **API Documentation**: http://127.0.0.1:8001/docs
 
 ### 3️⃣ Frontend Setup (React)
 
@@ -200,7 +200,7 @@ npm run dev
    cd backend
    python main.py
    ```
-   Wait for "Uvicorn running on http://127.0.0.1:8000" message
+   Wait for "Uvicorn running on http://127.0.0.1:8001" message
 
 2. **Start Frontend**:
    ```bash
@@ -333,8 +333,8 @@ python -c "import cv2; print(cv2.VideoCapture(0).isOpened())"
 #### 🌐 Connection Problems
 ```bash
 # Issue: Backend not accessible
-# Solution: Check if port 8000 is available
-netstat -an | findstr 8000
+# Solution: Check if port 8001 is available
+netstat -an | findstr 8001
 
 # Issue: Frontend build errors
 # Solution: Clear node_modules and reinstall

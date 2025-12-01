@@ -170,7 +170,7 @@ function App() {
   useEffect(() => {
     const connectWebSocket = () => {
       try {
-        const ws = new WebSocket('ws://127.0.0.1:8000/ws');
+        const ws = new WebSocket('ws://127.0.0.1:8001/ws');
         
         ws.onopen = () => {
           console.log('WebSocket connected');
@@ -231,7 +231,7 @@ function App() {
   // Send keyboard command to backend
   const sendKeyboardCommand = async (command) => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/drone/command', {
+      const response = await fetch('http://127.0.0.1:8001/drone/command', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -257,7 +257,7 @@ function App() {
   // Stop movement in a specific direction
   const stopMovement = async (direction) => {
     try {
-      const response = await fetch(`http://127.0.0.1:8000/drone/stop/${direction}`, {
+      const response = await fetch(`http://127.0.0.1:8001/drone/stop/${direction}`, {
         method: 'POST',
       });
       
@@ -362,7 +362,7 @@ function App() {
 
   const resetDrone = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/drone/reset', {
+      const response = await fetch('http://127.0.0.1:8001/drone/reset', {
         method: 'POST',
       });
       const data = await response.json();
@@ -374,7 +374,7 @@ function App() {
 
   const switchCamera = async (source, ipAddress = null) => {
     try {
-      const url = new URL('http://127.0.0.1:8000/camera/switch');
+      const url = new URL('http://127.0.0.1:8001/camera/switch');
       url.searchParams.append('source', source);
       if (source === 'phone' && ipAddress) {
         url.searchParams.append('ip_address', ipAddress);
