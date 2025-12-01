@@ -324,20 +324,38 @@ async def websocket_endpoint(websocket: WebSocket):
             
             # Capture frame from camera
             if camera is None or not camera.isOpened():
+                # Update physics even when camera is not available
+                # This ensures keyboard/button controls still work
+                drone_simulator.update_physics()
+                
                 await websocket.send_json({
                     "error": "Camera not available",
-                    "drone_status": drone_simulator.get_status()
+                    "drone_status": drone_simulator.get_status(),
+                    "gesture": {
+                        "name": None,
+                        "confidence": 0.0
+                    },
+                    "timestamp": time.time()
                 })
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.04)  # Match the same frame rate as normal operation
                 continue
             
             ret, frame = camera.read()
             if not ret:
+                # Update physics even when frame capture fails
+                # This ensures keyboard/button controls still work
+                drone_simulator.update_physics()
+                
                 await websocket.send_json({
                     "error": "Failed to capture frame",
-                    "drone_status": drone_simulator.get_status()
+                    "drone_status": drone_simulator.get_status(),
+                    "gesture": {
+                        "name": None,
+                        "confidence": 0.0
+                    },
+                    "timestamp": time.time()
                 })
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.04)  # Match the same frame rate as normal operation
                 continue
             
             # Flip frame horizontally for mirror effect
