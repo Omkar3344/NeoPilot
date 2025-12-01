@@ -84,12 +84,6 @@ function CameraRig({ dronePosition, follow, cameraMode, droneRotation }) {
         dronePosition[2] * dronePosition[2]
       );
       
-      // Scale offset for far distances (except first-person and top-down)
-      if (cameraMode !== 'first-person' && cameraMode !== 'top-down') {
-        const scaleFactor = Math.max(1.0, distance / 12);
-        baseOffset.multiplyScalar(scaleFactor);
-      }
-      
       // Calculate target position
       targetPosition.current.set(
         dronePosition[0] + baseOffset.x,
@@ -521,12 +515,12 @@ function App() {
         {/* Left Panel - 3D Simulation */}
         <div className="flex-1 relative bg-gradient-to-br from-slate-950 to-slate-900">
           <Canvas shadows className="bg-transparent">
-            <PerspectiveCamera makeDefault position={[10, 12, 10]} fov={60} />
+            <PerspectiveCamera makeDefault position={[10, 12, 10]} fov={60} far={20000} />
             <OrbitControls 
               enablePan={true} 
               enableZoom={true} 
               enableRotate={!cameraFollow}
-              maxDistance={100}
+              maxDistance={5000}
               minDistance={3}
               minPolarAngle={0}
               maxPolarAngle={Math.PI / 2.1}
@@ -568,27 +562,36 @@ function App() {
             
             {/* Realistic Sky with EXR Environment Map (only in realistic mode) */}
             {realisticBackground && (
-              <>
-                <Environment 
-                  files="/bloem_field_sunrise_2k.exr" 
-                  background
-                  ground={{
-                    height: 15,
-                    radius: 200,
-                    scale: 100
-                  }}
-                />
-              </>
+              <Environment 
+                files="/bloem_field_sunrise_2k.exr" 
+                background
+              />
             )}
             
-            {/* Ground Plane - Only for grid mode, EXR environment handles realistic ground */}
+            {/* Infinite ground plane for realistic mode */}
+            {realisticBackground && (
+              <mesh 
+                receiveShadow 
+                rotation={[-Math.PI / 2, 0, 0]} 
+                position={[0, -0.01, 0]}
+              >
+                <planeGeometry args={[10000, 10000]} />
+                <meshStandardMaterial 
+                  color="#4A7C2F"
+                  roughness={0.95}
+                  metalness={0.0}
+                />
+              </mesh>
+            )}
+            
+            {/* Ground Plane - Only for grid mode */}
             {!realisticBackground && (
               <mesh 
                 receiveShadow 
                 rotation={[-Math.PI / 2, 0, 0]} 
-                position={[0, 0, 0]}
+                position={[0, -0.01, 0]}
               >
-                <planeGeometry args={[500, 500, 100, 100]} />
+                <planeGeometry args={[10000, 10000]} />
                 <meshStandardMaterial 
                   color="#0f172a"
                   roughness={0.8}
@@ -597,22 +600,21 @@ function App() {
               </mesh>
             )}
             
-            {/* Enhanced Grid (only in grid mode) - Fixed flickering */}
+            {/* Enhanced Grid (only in grid mode) - Infinite grid that follows camera */}
             {!realisticBackground && (
               <Grid
                 renderOrder={-1}
-                position={[0, 0.05, 0]}
-                infiniteGrid={false}
-                args={[500, 500]}
+                position={[0, 0.01, 0]}
+                infiniteGrid={true}
                 cellSize={2}
                 cellThickness={0.5}
                 sectionSize={10}
                 sectionThickness={1.5}
                 sectionColor={[0.5, 0.7, 1]}
                 cellColor={[0.2, 0.3, 0.5]}
-                fadeDistance={150}
-                fadeStrength={0.5}
-                followCamera={false}
+                fadeDistance={200}
+                fadeStrength={1}
+                followCamera={true}
               />
             )}
             
