@@ -123,61 +123,6 @@ class HandDetector:
         landmarks = self.extract_landmarks(hand_landmarks)
         return np.array(landmarks).reshape(21, 3)
     
-    def get_hand_bounding_box(self, hand_landmarks, frame_width: int, frame_height: int, padding: float = 0.3) -> Tuple[int, int, int, int]:
-        """
-        Calculate bounding box around detected hand with padding
-        
-        Args:
-            hand_landmarks: MediaPipe hand landmarks object
-            frame_width: Width of the frame
-            frame_height: Height of the frame
-            padding: Padding percentage around hand (0.3 = 30% extra space)
-            
-        Returns:
-            Tuple of (x_min, y_min, x_max, y_max) in pixel coordinates
-        """
-        if hand_landmarks is None:
-            return None
-        
-        # Extract all x, y coordinates
-        x_coords = [landmark.x for landmark in hand_landmarks.landmark]
-        y_coords = [landmark.y for landmark in hand_landmarks.landmark]
-        
-        # Find bounding box
-        x_min = min(x_coords)
-        x_max = max(x_coords)
-        y_min = min(y_coords)
-        y_max = max(y_coords)
-        
-        # Add padding
-        width = x_max - x_min
-        height = y_max - y_min
-        
-        x_min = max(0, x_min - width * padding)
-        x_max = min(1, x_max + width * padding)
-        y_min = max(0, y_min - height * padding)
-        y_max = min(1, y_max + height * padding)
-        
-        # Convert to pixel coordinates
-        x_min_px = int(x_min * frame_width)
-        x_max_px = int(x_max * frame_width)
-        y_min_px = int(y_min * frame_height)
-        y_max_px = int(y_max * frame_height)
-        
-        # Ensure minimum size for better visibility
-        min_size = 200
-        if x_max_px - x_min_px < min_size:
-            center_x = (x_min_px + x_max_px) // 2
-            x_min_px = max(0, center_x - min_size // 2)
-            x_max_px = min(frame_width, center_x + min_size // 2)
-        
-        if y_max_px - y_min_px < min_size:
-            center_y = (y_min_px + y_max_px) // 2
-            y_min_px = max(0, center_y - min_size // 2)
-            y_max_px = min(frame_height, center_y + min_size // 2)
-        
-        return (x_min_px, y_min_px, x_max_px, y_max_px)
-    
     def draw_landmarks(
         self, 
         frame: np.ndarray, 

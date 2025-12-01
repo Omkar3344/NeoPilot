@@ -67,13 +67,7 @@ class GesturePipeline:
         self.last_detection_time = 0.0
         self.detection_timeout = 2.0  # Reset after 2 seconds of no detection
         
-        # Auto-zoom configuration
-        self.enable_auto_zoom = True
-        self.zoom_padding = 0.3  # 30% padding around hand
-        self.zoom_transition_speed = 0.15  # Smooth transition speed
-        self.current_zoom_box = None  # Smoothed zoom box
-        
-        logging.info("GesturePipeline initialized successfully with auto-zoom")
+        logging.info("GesturePipeline initialized successfully")
     
     def process_frame(
         self, 
@@ -94,59 +88,10 @@ class GesturePipeline:
         """
         start_time = time.time()
         
-        original_frame = frame.copy()
-        frame_height, frame_width = frame.shape[:2]
-        
-        # Step 1: Detect hand on original frame
+        # Step 1: Detect hand
         hand_landmarks = self.hand_detector.detect_hand(frame)
         
-        # Step 1.5: Apply auto-zoom if hand detected
-        zoomed_frame = frame
-        zoom_applied = False
-        processing_frame = frame  # Frame to use for gesture processing
-        
-        if hand_landmarks and self.enable_auto_zoom:
-            bbox = self.hand_detector.get_hand_bounding_box(
-                hand_landmarks, frame_width, frame_height, self.zoom_padding
-            )
-            if bbox:
-                x_min, y_min, x_max, y_max = bbox
-                
-                # Smooth transition for zoom box
-                if self.current_zoom_box is None:
-                    self.current_zoom_box = bbox
-                else:
-                    # Interpolate between current and target zoom box
-                    curr_x_min, curr_y_min, curr_x_max, curr_y_max = self.current_zoom_box
-                    speed = self.zoom_transition_speed
-                    self.current_zoom_box = (
-                        int(curr_x_min + (x_min - curr_x_min) * speed),
-                        int(curr_y_min + (y_min - curr_y_min) * speed),
-                        int(curr_x_max + (x_max - curr_x_max) * speed),
-                        int(curr_y_max + (y_max - curr_y_max) * speed)
-                    )
-                
-                # Crop and zoom the frame for display
-                x_min, y_min, x_max, y_max = self.current_zoom_box
-                cropped = frame[y_min:y_max, x_min:x_max]
-                
-                if cropped.size > 0:
-                    # Resize to original frame size for display
-                    zoomed_frame = cv2.resize(cropped, (frame_width, frame_height), interpolation=cv2.INTER_LINEAR)
-                    zoom_applied = True
-                    
-                    # Use zoomed frame for processing as well for better accuracy
-                    processing_frame = zoomed_frame
-                    # Re-detect hand on zoomed frame for more accurate landmarks
-                    zoomed_hand_landmarks = self.hand_detector.detect_hand(zoomed_frame)
-                    # Only use zoomed landmarks if detection succeeded
-                    if zoomed_hand_landmarks is not None:
-                        hand_landmarks = zoomed_hand_landmarks
-        else:
-            # Reset zoom box if no hand detected
-            self.current_zoom_box = None
-        
-        annotated_frame = zoomed_frame.copy()
+        annotated_frame = frame.copy()
         
         if hand_landmarks is None:
             # No hand detected
@@ -196,18 +141,6 @@ class GesturePipeline:
                 confidence,
                 is_new
             )
-            
-            # Draw zoom indicator
-            if zoom_applied:
-                cv2.putText(
-                    annotated_frame,
-                    "AUTO-ZOOM: ON",
-                    (10, frame_height - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (0, 255, 0),
-                    2
-                )
         
         self._update_performance(start_time)
         
@@ -350,23 +283,6 @@ class GesturePipeline:
     def enable_visualization_mode(self, enable: bool):
         """Enable or disable visualization"""
         self.enable_visualization = enable
-    
-    def toggle_auto_zoom(self, enable: bool):
-        """Enable or disable auto-zoom feature"""
-        self.enable_auto_zoom = enable
-        if not enable:
-            self.current_zoom_box = None
-        logging.info(f"Auto-zoom {'enabled' if enable else 'disabled'}")
-    
-    def set_zoom_padding(self, padding: float):
-        """
-        Set padding around hand for auto-zoom
-        
-        Args:
-            padding: Padding percentage (0.1 to 0.5 recommended)
-        """
-        self.zoom_padding = max(0.1, min(0.5, padding))
-        logging.info(f"Zoom padding set to: {self.zoom_padding}")
     
     def close(self):
         """Release resources"""

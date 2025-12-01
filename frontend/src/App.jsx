@@ -162,7 +162,6 @@ function App() {
   const [phoneIpAddress, setPhoneIpAddress] = useState('');
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [realisticBackground, setRealisticBackground] = useState(false);
-  const [autoZoomEnabled, setAutoZoomEnabled] = useState(true);
   
   const wsRef = useRef(null);
   const pressedKeysRef = useRef(new Set());
@@ -406,21 +405,6 @@ function App() {
       return;
     }
     switchCamera('phone', phoneIpAddress);
-  };
-
-  const toggleAutoZoom = async (enable) => {
-    try {
-      const response = await fetch(`http://127.0.0.1:8000/autozoom/toggle?enable=${enable}`, {
-        method: 'POST',
-      });
-      const data = await response.json();
-      console.log('Auto-zoom toggled:', data);
-      setAutoZoomEnabled(enable);
-      return data;
-    } catch (error) {
-      console.error('Error toggling auto-zoom:', error);
-      throw error;
-    }
   };
 
   return (
@@ -904,11 +888,7 @@ function App() {
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <FlightControls 
-                    droneData={droneData} 
-                    autoZoomEnabled={autoZoomEnabled}
-                    onToggleAutoZoom={toggleAutoZoom}
-                  />
+                  <FlightControls droneData={droneData} />
                 </motion.div>
               )}
               {activeTab === 'gestures' && (

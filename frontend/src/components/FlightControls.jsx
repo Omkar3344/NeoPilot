@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
   Sliders, 
   Zap, 
@@ -6,18 +6,10 @@ import {
   Target,
   ToggleLeft,
   ToggleRight,
-  Gauge,
-  ZoomIn
+  Gauge
 } from 'lucide-react';
 
-const FlightControls = ({ droneData, autoZoomEnabled, onToggleAutoZoom }) => {
-  const [isTogglingZoom, setIsTogglingZoom] = useState(false);
-
-  const handleZoomToggle = async () => {
-    setIsTogglingZoom(true);
-    await onToggleAutoZoom(!autoZoomEnabled);
-    setIsTogglingZoom(false);
-  };
+const FlightControls = ({ droneData }) => {
 
   const controlSettings = [
     {
@@ -105,46 +97,6 @@ const FlightControls = ({ droneData, autoZoomEnabled, onToggleAutoZoom }) => {
               </div>
             );
           })}
-          
-          {/* Auto-Zoom Control */}
-          <div className="glass-panel p-4 border-2 border-blue-500/30">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <ZoomIn className={`h-5 w-5 ${autoZoomEnabled ? 'text-blue-400' : 'text-slate-400'}`} />
-                <div>
-                  <span className="text-slate-300 block">Auto-Zoom</span>
-                  <span className="text-xs text-slate-500">Zoom on detected hand</span>
-                </div>
-              </div>
-              <button
-                onClick={handleZoomToggle}
-                disabled={isTogglingZoom}
-                className={`flex items-center space-x-2 px-3 py-1 rounded-lg transition-all ${
-                  autoZoomEnabled
-                    ? 'bg-blue-500/20 hover:bg-blue-500/30'
-                    : 'bg-slate-700 hover:bg-slate-600'
-                } ${isTogglingZoom ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <span className={`text-sm font-medium ${
-                  autoZoomEnabled ? 'text-blue-400' : 'text-slate-400'
-                }`}>
-                  {autoZoomEnabled ? 'ON' : 'OFF'}
-                </span>
-                {autoZoomEnabled ? (
-                  <ToggleRight className="h-5 w-5 text-blue-400" />
-                ) : (
-                  <ToggleLeft className="h-5 w-5 text-slate-500" />
-                )}
-              </button>
-            </div>
-            {autoZoomEnabled && (
-              <div className="mt-2 pt-2 border-t border-slate-700">
-                <p className="text-xs text-slate-400">
-                  Camera auto-zooms on your hand for better gesture recognition accuracy
-                </p>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
