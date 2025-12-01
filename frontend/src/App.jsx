@@ -24,108 +24,158 @@ function CameraRig({ dronePosition, follow, cameraMode, droneRotation }) {
   const { camera } = useThree();
   const targetPosition = useRef(new THREE.Vector3(10, 12, 10));
   const targetLookAt = useRef(new THREE.Vector3(0, 0, 0));
-  const modeTransitionRef = useRef(1.0);
+  const smoothedLookAt = useRef(new THREE.Vector3(0, 0, 0));
+  const prevCameraMode = useRef(cameraMode);
+  const transitionProgress = useRef(1.0);
   
   useFrame((state, delta) => {
     if (follow && dronePosition) {
+      // Detect camera mode change for smooth transition
+      if (prevCameraMode.current !== cameraMode) {
+        transitionProgress.current = 0;
+        prevCameraMode.current = cameraMode;
+      }
+      transitionProgress.current = Math.min(1.0, transitionProgress.current + delta * 2);
+      
+      const yawRad = (droneRotation?.yaw || 0) * Math.PI / 180;
+      const pitchRad = (droneRotation?.pitch || 0) * Math.PI / 180;
+      
       let baseOffset;
       let lookAtOffset = new THREE.Vector3(0, 0, 0);
+      let lerpSpeed;
       
       // Calculate camera position based on mode
       switch (cameraMode) {
         case 'first-person':
-          // Camera attached to drone, looking forward
-          baseOffset = new THREE.Vector3(0, 0.2, 0); // Slightly above drone center
-          lookAtOffset = new THREE.Vector3(0, 0, 5); // Look forward
+          // FPV: Camera at front of drone where camera gimbal is, looking forward
+          // Position camera at the front camera location (matching DroneModel gimbal position)
+          const fpvForwardOffset = 1.2; // In front of drone (where camera gimbal is at z=0.7 + lens offset)
+          const fpvHeight = 0.0; // Slightly below drone center (gimbal is at y=-0.15)
+          
+          // Calculate forward direction based on drone's yaw
+          baseOffset = new THREE.Vector3(
+            Math.sin(yawRad) * fpvForwardOffset,
+            fpvHeight,
+            Math.cos(yawRad) * fpvForwardOffset
+          );
+          
+          // Look far ahead in the direction the drone is facing
+          const lookDistance = 50;
+          lookAtOffset = new THREE.Vector3(
+            Math.sin(yawRad) * lookDistance,
+            -Math.sin(pitchRad) * lookDistance * 0.5, // Slight pitch influence
+            Math.cos(yawRad) * lookDistance
+          );
+          lerpSpeed = 0.5; // Very responsive for FPV
           break;
           
         case 'chase':
-          // Following behind drone
-          const yawRad = (droneRotation?.yaw || 0) * Math.PI / 180;
-          const chaseDistance = 8;
+          // Chase camera: Behind and above the drone, following its direction
+          const chaseDistance = 10;
+          const chaseHeight = 4;
+          const chaseLookAhead = 5;
+          
+          // Position camera behind the drone based on yaw
           baseOffset = new THREE.Vector3(
-            Math.sin(yawRad + Math.PI) * chaseDistance,
-            4,
-            Math.cos(yawRad + Math.PI) * chaseDistance
+            -Math.sin(yawRad) * chaseDistance,
+            chaseHeight,
+            -Math.cos(yawRad) * chaseDistance
           );
-          lookAtOffset = new THREE.Vector3(0, 0, 0);
+          
+          // Look slightly ahead of the drone
+          lookAtOffset = new THREE.Vector3(
+            Math.sin(yawRad) * chaseLookAhead,
+            0,
+            Math.cos(yawRad) * chaseLookAhead
+          );
+          lerpSpeed = 0.08; // Smooth chase following
           break;
           
         case 'cinematic':
           // Smooth orbiting camera with dynamic angles
-          const orbitRadius = 15;
-          const orbitAngle = state.clock.elapsedTime * 0.3;
-          const orbitHeight = 8 + Math.sin(state.clock.elapsedTime * 0.5) * 2;
+          const orbitRadius = 18;
+          const orbitAngle = state.clock.elapsedTime * 0.2; // Slower orbit
+          const orbitHeight = 10 + Math.sin(state.clock.elapsedTime * 0.3) * 3;
           baseOffset = new THREE.Vector3(
             Math.cos(orbitAngle) * orbitRadius,
             orbitHeight,
             Math.sin(orbitAngle) * orbitRadius
           );
-          lookAtOffset = new THREE.Vector3(0, 0, 0);
+          lookAtOffset = new THREE.Vector3(0, 1, 0); // Look slightly above drone center
+          lerpSpeed = 0.03; // Very slow for smooth cinematic
           break;
           
         case 'top-down':
-          // Directly above drone
-          baseOffset = new THREE.Vector3(0, 20, 0);
+          // Directly above drone with slight offset for better view
+          baseOffset = new THREE.Vector3(0, 25, 0.1);
           lookAtOffset = new THREE.Vector3(0, 0, 0);
+          lerpSpeed = 0.1;
           break;
           
         case 'default':
         default:
-          // Default diagonal view
-          baseOffset = new THREE.Vector3(10, 12, 10);
-          lookAtOffset = new THREE.Vector3(0, 0, 0);
+          // Default: Dynamic diagonal view that follows drone movement
+          // Offset adjusts based on drone's horizontal distance from origin
+          const droneDistFromOrigin = Math.sqrt(
+            dronePosition[0] * dronePosition[0] + 
+            dronePosition[2] * dronePosition[2]
+          );
+          
+          // Scale offset based on distance for better framing
+          const scaleFactor = Math.max(1, 1 + droneDistFromOrigin * 0.02);
+          const baseOffsetDist = 12 * scaleFactor;
+          const baseOffsetHeight = 10 * scaleFactor;
+          
+          baseOffset = new THREE.Vector3(
+            baseOffsetDist * 0.7, // Slight angle
+            baseOffsetHeight,
+            baseOffsetDist * 0.7
+          );
+          lookAtOffset = new THREE.Vector3(0, 0.5, 0);
+          lerpSpeed = 0.06;
           break;
       }
       
-      // Calculate distance from origin for dynamic adjustment
-      const distance = Math.sqrt(
-        dronePosition[0] * dronePosition[0] + 
-        dronePosition[2] * dronePosition[2]
-      );
-      
-      // Calculate target position
+      // Calculate target camera position
       targetPosition.current.set(
         dronePosition[0] + baseOffset.x,
         dronePosition[1] + baseOffset.y,
         dronePosition[2] + baseOffset.z
       );
       
-      // Ensure camera never goes below ground level
-      if (targetPosition.current.y < 2.0 && cameraMode !== 'first-person') {
-        targetPosition.current.y = 2.0;
-      }
-      
-      // Calculate look-at position
+      // Calculate look-at target
       targetLookAt.current.set(
         dronePosition[0] + lookAtOffset.x,
         dronePosition[1] + lookAtOffset.y,
         dronePosition[2] + lookAtOffset.z
       );
       
-      // Smooth camera follow with mode-specific lerp speeds
-      let lerpSpeed;
-      if (cameraMode === 'first-person') {
-        lerpSpeed = 0.3; // Very responsive for first-person
-      } else if (cameraMode === 'cinematic') {
-        lerpSpeed = 0.05; // Slower for cinematic effect
+      // Ground constraints (except FPV which can be at drone level)
+      if (cameraMode !== 'first-person') {
+        if (targetPosition.current.y < 2.0) {
+          targetPosition.current.y = 2.0;
+        }
       } else {
-        lerpSpeed = distance > 30 ? 0.15 : distance > 15 ? 0.12 : 0.08;
+        // For FPV, allow camera to be at drone altitude but not below ground
+        if (targetPosition.current.y < 0.5) {
+          targetPosition.current.y = 0.5;
+        }
       }
       
-      camera.position.lerp(targetPosition.current, lerpSpeed);
+      // Apply position interpolation with frame-rate independent smoothing
+      const smoothFactor = 1 - Math.pow(1 - lerpSpeed, delta * 60);
+      camera.position.lerp(targetPosition.current, smoothFactor);
       
-      // Keep camera above ground at all times (except first-person)
-      if (camera.position.y < 1.5 && cameraMode !== 'first-person') {
+      // Keep camera above ground
+      if (cameraMode !== 'first-person' && camera.position.y < 1.5) {
         camera.position.y = 1.5;
       }
       
-      // Smooth look-at
-      const currentLookAt = new THREE.Vector3();
-      camera.getWorldDirection(currentLookAt);
-      currentLookAt.multiplyScalar(10).add(camera.position);
-      currentLookAt.lerp(targetLookAt.current, lerpSpeed * 1.2);
-      camera.lookAt(currentLookAt);
+      // Smooth look-at interpolation
+      const lookAtSmooth = cameraMode === 'first-person' ? 0.4 : lerpSpeed * 1.5;
+      const lookAtFactor = 1 - Math.pow(1 - lookAtSmooth, delta * 60);
+      smoothedLookAt.current.lerp(targetLookAt.current, lookAtFactor);
+      camera.lookAt(smoothedLookAt.current);
     }
   });
   
@@ -724,12 +774,33 @@ function App() {
               NEOPILOT
             </Text>
             
-            {/* Drone Model */}
-            <DroneModel 
-              position={droneData.position}
-              rotation={droneData.rotation}
-              isFlying={droneData.is_flying}
-            />
+            {/* Drone Model - Hide in FPV mode to prevent seeing the drone body */}
+            {cameraMode !== 'first-person' && (
+              <DroneModel 
+                position={droneData.position}
+                rotation={droneData.rotation}
+                isFlying={droneData.is_flying}
+              />
+            )}
+            
+            {/* FPV Mode - Show camera frame/cockpit overlay effect */}
+            {cameraMode === 'first-person' && cameraFollow && (
+              <group
+                position={[
+                  droneData.position.x || 0,
+                  droneData.position.y || 0,
+                  droneData.position.z || 0
+                ]}
+                rotation={[
+                  (droneData.rotation.pitch || 0) * Math.PI / 180,
+                  (droneData.rotation.yaw || 0) * Math.PI / 180,
+                  (droneData.rotation.roll || 0) * Math.PI / 180
+                ]}
+              >
+                {/* Minimal cockpit frame for FPV immersion - just corner indicators */}
+                {/* These are positioned behind the camera so they won't be visible */}
+              </group>
+            )}
           </Canvas>
 
           {/* Current Gesture Overlay */}
@@ -767,11 +838,58 @@ function App() {
               <div className="flex items-center space-x-2">
                 <Maximize2 className="h-4 w-4 text-purple-400" />
                 <span className="text-xs text-slate-300">
-                  {cameraFollow ? 'Following Drone' : 'Free Camera'}
+                  {cameraFollow ? (cameraMode === 'first-person' ? 'FPV Mode' : 'Following Drone') : 'Free Camera'}
                 </span>
               </div>
             </div>
           </div>
+          
+          {/* FPV HUD Overlay - Only visible in first-person mode */}
+          {cameraMode === 'first-person' && cameraFollow && (
+            <>
+              {/* Corner brackets for FPV frame effect */}
+              <div className="absolute inset-0 pointer-events-none">
+                {/* Top-left corner */}
+                <div className="absolute top-8 left-8 w-16 h-16 border-l-2 border-t-2 border-cyan-400/60"></div>
+                {/* Top-right corner */}
+                <div className="absolute top-8 right-[440px] w-16 h-16 border-r-2 border-t-2 border-cyan-400/60"></div>
+                {/* Bottom-left corner */}
+                <div className="absolute bottom-8 left-8 w-16 h-16 border-l-2 border-b-2 border-cyan-400/60"></div>
+                {/* Bottom-right corner */}
+                <div className="absolute bottom-8 right-[440px] w-16 h-16 border-r-2 border-b-2 border-cyan-400/60"></div>
+                
+                {/* Center crosshair */}
+                <div className="absolute top-1/2 left-[calc(50%-210px)] transform -translate-x-1/2 -translate-y-1/2">
+                  <div className="relative">
+                    <div className="absolute w-8 h-0.5 bg-cyan-400/40 -left-4 top-0"></div>
+                    <div className="absolute h-8 w-0.5 bg-cyan-400/40 left-0 -top-4"></div>
+                    <div className="w-2 h-2 border border-cyan-400/60 rounded-full"></div>
+                  </div>
+                </div>
+                
+                {/* FPV telemetry overlay */}
+                <div className="absolute top-8 left-1/2 transform -translate-x-[calc(50%+210px)] text-center">
+                  <div className="text-cyan-400/80 text-xs font-mono">
+                    <div>ALT: {(droneData.altitude || 0).toFixed(1)}m</div>
+                    <div>SPD: {(droneData.speed || 0).toFixed(1)}m/s</div>
+                  </div>
+                </div>
+                
+                {/* Heading indicator */}
+                <div className="absolute bottom-16 left-1/2 transform -translate-x-[calc(50%+210px)]">
+                  <div className="text-cyan-400/80 text-xs font-mono text-center">
+                    <div>HDG: {((droneData.rotation?.yaw || 0) % 360).toFixed(0)}°</div>
+                  </div>
+                </div>
+                
+                {/* REC indicator */}
+                <div className="absolute top-8 left-24 flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                  <span className="text-red-400/80 text-xs font-mono">REC</span>
+                </div>
+              </div>
+            </>
+          )}
           
         </div>
 
