@@ -230,6 +230,32 @@ async def set_sensitivity(level: str):
     gesture_pipeline.adjust_sensitivity(level)
     return {"message": f"Sensitivity set to {level}", "level": level}
 
+@app.post("/autozoom/toggle")
+async def toggle_autozoom(enable: bool):
+    """
+    Enable or disable auto-zoom feature for better gesture recognition
+    """
+    if gesture_pipeline is None:
+        raise HTTPException(status_code=503, detail="Gesture system not initialized")
+    
+    gesture_pipeline.toggle_auto_zoom(enable)
+    return {"message": f"Auto-zoom {'enabled' if enable else 'disabled'}", "enabled": enable}
+
+@app.post("/autozoom/padding/{padding}")
+async def set_zoom_padding(padding: float):
+    """
+    Set zoom padding (0.1 to 0.5)
+    Lower values = tighter zoom, higher values = more context around hand
+    """
+    if gesture_pipeline is None:
+        raise HTTPException(status_code=503, detail="Gesture system not initialized")
+    
+    if padding < 0.1 or padding > 0.5:
+        raise HTTPException(status_code=400, detail="Padding must be between 0.1 and 0.5")
+    
+    gesture_pipeline.set_zoom_padding(padding)
+    return {"message": f"Zoom padding set to {padding}", "padding": padding}
+
 class DroneCommand(BaseModel):
     command: str
 

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Cylinder, Box, Sphere, RoundedBox, Torus } from '@react-three/drei';
 import * as THREE from 'three';
@@ -9,6 +9,7 @@ const DroneModel = ({ position, rotation, isFlying }) => {
   const glowRef = useRef();
   const targetPosition = useRef([0, 0, 0]);
   const currentPosition = useRef([0, 0, 0]);
+  const prevPosition = useRef([0, 0, 0]);
   
   // CORRECT axis mapping for Three.js:
   // Backend: X (left/right), Y (altitude), Z (forward/back)
@@ -23,6 +24,26 @@ const DroneModel = ({ position, rotation, isFlying }) => {
   if (!isFlying) {
     targetPosition.current[1] = 0.5;
   }
+  
+  // Detect large position jumps (like reset) and snap immediately
+  useEffect(() => {
+    const dx = Math.abs(targetPosition.current[0] - prevPosition.current[0]);
+    const dy = Math.abs(targetPosition.current[1] - prevPosition.current[1]);
+    const dz = Math.abs(targetPosition.current[2] - prevPosition.current[2]);
+    const totalDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    
+    // If position jumped more than 5 units, it's likely a reset - snap immediately
+    if (totalDistance > 5) {
+      currentPosition.current[0] = targetPosition.current[0];
+      currentPosition.current[1] = targetPosition.current[1];
+      currentPosition.current[2] = targetPosition.current[2];
+    }
+    
+    // Update previous position
+    prevPosition.current[0] = targetPosition.current[0];
+    prevPosition.current[1] = targetPosition.current[1];
+    prevPosition.current[2] = targetPosition.current[2];
+  }, [position.x, position.y, position.z]);
   
   // Convert rotation
   const droneRotation = [
