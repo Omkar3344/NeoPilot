@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, Grid, Text, Line } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, Grid, Text, Line, Environment } from '@react-three/drei';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as THREE from 'three';
 import DroneModel from './components/DroneModel';
@@ -566,87 +566,35 @@ function App() {
               intensity={realisticBackground ? 0.6 : 0.4}
             />
             
-            {/* Realistic Sky with Skybox (only in realistic mode) */}
+            {/* Realistic Sky with EXR Environment Map (only in realistic mode) */}
             {realisticBackground && (
               <>
-                <color attach="background" args={['#87CEEB']} />
-                <fog attach="fog" args={['#B0D4F1', 50, 200]} />
-                
-                {/* Simple Skybox using box geometry */}
-                <mesh>
-                  <boxGeometry args={[500, 500, 500]} />
-                  <meshBasicMaterial color="#87CEEB" side={THREE.BackSide} />
-                </mesh>
-                
-                {/* Add some clouds */}
-                {[...Array(10)].map((_, i) => (
-                  <mesh 
-                    key={i} 
-                    position={[
-                      Math.random() * 100 - 50,
-                      20 + Math.random() * 30,
-                      Math.random() * 100 - 50
-                    ]}
-                  >
-                    <sphereGeometry args={[3 + Math.random() * 2, 8, 8]} />
-                    <meshBasicMaterial color="#FFFFFF" transparent opacity={0.6} />
-                  </mesh>
-                ))}
+                <Environment 
+                  files="/bloem_field_sunrise_2k.exr" 
+                  background
+                  ground={{
+                    height: 15,
+                    radius: 200,
+                    scale: 100
+                  }}
+                />
               </>
             )}
             
-            {/* Ground Plane - SOLID GROUND LEVEL at Y=0 with better texturing */}
-            <mesh 
-              receiveShadow 
-              rotation={[-Math.PI / 2, 0, 0]} 
-              position={[0, 0, 0]}
-            >
-              <planeGeometry args={[500, 500, 100, 100]} />
-              <meshStandardMaterial 
-                color={realisticBackground ? "#4A7C2F" : "#0f172a"}
-                roughness={realisticBackground ? 0.95 : 0.8}
-                metalness={realisticBackground ? 0.0 : 0.2}
-              />
-            </mesh>
-            
-            {/* Realistic grass texture with varied colors */}
-            {realisticBackground && (
-              <>
-                <mesh 
-                  receiveShadow 
-                  rotation={[-Math.PI / 2, 0, 0]} 
-                  position={[0, 0.02, 0]}
-                >
-                  <planeGeometry args={[500, 500, 200, 200]} />
-                  <meshStandardMaterial 
-                    color="#5A9C35"
-                    roughness={1.0}
-                    wireframe={false}
-                    transparent
-                    opacity={0.4}
-                  />
-                </mesh>
-                
-                {/* Add some grass patches for variation */}
-                {[...Array(20)].map((_, i) => (
-                  <mesh 
-                    key={i}
-                    receiveShadow 
-                    rotation={[-Math.PI / 2, 0, 0]} 
-                    position={[
-                      Math.random() * 200 - 100,
-                      0.01,
-                      Math.random() * 200 - 100
-                    ]}
-                  >
-                    <circleGeometry args={[5 + Math.random() * 10, 32]} />
-                    <meshStandardMaterial 
-                      color={`#${Math.floor(Math.random() * 2) ? '5A9C35' : '6BAF47'}`}
-                      roughness={1.0}
-                    />
-                  </mesh>
-                ))}
-              </>
+            {/* Ground Plane - Only for grid mode, EXR environment handles realistic ground */}
+            {!realisticBackground && (
+              <mesh 
+                receiveShadow 
+                rotation={[-Math.PI / 2, 0, 0]} 
+                position={[0, 0, 0]}
+              >
+                <planeGeometry args={[500, 500, 100, 100]} />
+                <meshStandardMaterial 
+                  color="#0f172a"
+                  roughness={0.8}
+                  metalness={0.2}
+                />
+              </mesh>
             )}
             
             {/* Enhanced Grid (only in grid mode) - Fixed flickering */}
