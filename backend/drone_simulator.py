@@ -171,6 +171,11 @@ class DroneSimulator:
             else:
                 message = "Cannot move below ground level"
                 command_executed = False
+        
+        # RESET - Reset drone to initial position
+        elif gesture == "reset":
+            self.__init__()
+            message = "Drone reset to initial position"
             
         else:
             command_executed = False

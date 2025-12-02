@@ -8,7 +8,10 @@ import {
   MoveUp,
   MoveDown,
   CircleDot,
-  AlertTriangle
+  AlertTriangle,
+  RotateCcw,
+  ThumbsUp,
+  ThumbsDown
 } from 'lucide-react';
 
 const GestureGuide = () => {
@@ -17,8 +20,8 @@ const GestureGuide = () => {
       name: 'Stop / Hover',
       icon: Hand,
       color: 'text-orange-400',
-      description: '✋ Open palm with fingers spread apart',
-      details: 'All fingers extended and separated - Hover in place',
+      description: '🖐 Open palm with fingers spread apart',
+      details: 'All fingers extended and separated - Hover in place or takeoff',
       command: 'stop'
     },
     {
@@ -31,51 +34,59 @@ const GestureGuide = () => {
     },
     {
       name: 'Go Forward',
-      icon: MoveUp,
+      icon: ThumbsUp,
       color: 'text-green-400',
-      description: '✋ Palm facing camera, all fingers extended',
-      details: 'Open palm facing forward - Move drone forward',
+      description: '👍 Thumbs up - thumb pointing upward',
+      details: 'Closed fist with thumb extended upward',
       command: 'go_forward'
     },
     {
       name: 'Back',
-      icon: MoveDown,
+      icon: ThumbsDown,
       color: 'text-blue-400',
-      description: '👊 Closed fist, back of hand visible',
-      details: 'All fingers curled, palm facing away',
+      description: '👎 Thumbs down - thumb pointing downward',
+      details: 'Closed fist with thumb pointing down',
       command: 'back'
     },
     {
-      name: 'Up',
+      name: 'Up (Altitude)',
       icon: ArrowUp,
       color: 'text-cyan-400',
-      description: '👆 Index finger pointing upward',
-      details: 'Only index extended, palm facing forward',
+      description: '☝️ Index finger pointing up',
+      details: 'Only index finger extended upward, thumb and other fingers closed',
       command: 'up'
     },
     {
-      name: 'Down',
+      name: 'Down (Altitude)',
       icon: ArrowDown,
       color: 'text-purple-400',
-      description: '👇 Palm facing downward',
-      details: 'Hand rotated with fingers pointing down',
+      description: '👇 Index finger pointing down',
+      details: 'Only index finger extended downward, thumb and other fingers closed',
       command: 'down'
     },
     {
       name: 'Left',
       icon: ArrowLeft,
       color: 'text-yellow-400',
-      description: '✊ Closed fist with thumb pointing left',
-      details: 'Fist with thumb extended to the left',
+      description: '👈 Thumb pointing left',
+      details: 'Closed fist with thumb extended to the left',
       command: 'left'
     },
     {
       name: 'Right',
       icon: ArrowRight,
       color: 'text-pink-400',
-      description: '✊ Closed fist with thumb pointing right',
-      details: 'Fist with thumb extended to the right',
+      description: '👉 Thumb pointing right',
+      details: 'Closed fist with thumb extended to the right',
       command: 'right'
+    },
+    {
+      name: 'Reset Drone',
+      icon: RotateCcw,
+      color: 'text-emerald-400',
+      description: '✌️ Peace sign - index & middle finger up',
+      details: 'Index and middle fingers extended upward, other fingers closed',
+      command: 'reset'
     }
   ];
 
@@ -84,7 +95,7 @@ const GestureGuide = () => {
       <div className="mb-6">
         <div className="flex items-center space-x-3 mb-4">
           <Hand className="h-6 w-6 text-blue-400" />
-          <h3 className="text-lg font-semibold text-slate-200">Hand Gestures (8 Simple)</h3>
+          <h3 className="text-lg font-semibold text-slate-200">Hand Gestures (9 Commands)</h3>
         </div>
         <p className="text-sm text-slate-400 leading-relaxed">
           Position your hand clearly in front of the camera. Make distinct gestures 

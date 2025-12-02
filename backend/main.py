@@ -237,9 +237,9 @@ class DroneCommand(BaseModel):
 async def execute_drone_command(cmd: DroneCommand):
     """
     Execute a drone command via keyboard input
-    Accepts commands: "go_forward", "back", "left", "right", "up", "down", "stop", "land"
+    Accepts commands: "go_forward", "back", "left", "right", "up", "down", "stop", "land", "reset"
     """
-    valid_commands = ["go_forward", "back", "left", "right", "up", "down", "stop", "land"]
+    valid_commands = ["go_forward", "back", "left", "right", "up", "down", "stop", "land", "reset"]
     command = cmd.command
     
     if command not in valid_commands:
@@ -247,6 +247,12 @@ async def execute_drone_command(cmd: DroneCommand):
             status_code=400, 
             detail=f"Invalid command. Valid commands are: {', '.join(valid_commands)}"
         )
+    
+    # Handle reset command specially
+    if command == "reset":
+        result = drone_simulator.reset()
+        logger.info(f"Drone reset via command")
+        return result
     
     # Execute command with confidence 1.0 (keyboard input is reliable)
     result = drone_simulator.execute_gesture_command(command, confidence=1.0)

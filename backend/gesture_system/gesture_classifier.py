@@ -11,17 +11,28 @@ class GestureClassifier:
     """
     Classify gestures using precise geometric rules
     Optimized for accuracy with simple, distinct gestures
+    
+    Gesture Definitions:
+    - GO_FORWARD: Thumbs up 👍 (thumb up, other fingers closed)
+    - BACK: Thumbs down 👎 (thumb down, other fingers closed)
+    - LEFT: Thumb pointing left 👈 (closed fist, thumb extended left)
+    - RIGHT: Thumb pointing right 👉 (closed fist, thumb extended right)
+    - UP: Index finger up ☝️ (index up, all other fingers including thumb closed)
+    - DOWN: Index finger down 👇 (index down, all other fingers including thumb closed)
+    - RESET: Peace sign ✌️ (index + middle up, other fingers closed)
+    - LAND: OK sign 👌 (thumb + index circle, other fingers extended)
+    - STOP: Open palm 🖐 (all fingers extended and spread)
     """
     
-    # Gesture definitions - matching the reference image
-    UP = 'up'                    # Pointing up (index finger)
-    DOWN = 'down'                # Pointing down (hand tilted down)
-    BACK = 'back'                # Fist (closed hand)
-    GO_FORWARD = 'go_forward'    # Two fingers up (index + middle pointing up)
+    UP = 'up'                    # Index finger up (other fingers closed)
+    DOWN = 'down'                # Index finger down (other fingers closed)
+    BACK = 'back'                # Thumbs down
+    GO_FORWARD = 'go_forward'    # Thumbs up
     LAND = 'land'                # OK sign (thumb + index circle)
     STOP = 'stop'                # Open palm (all fingers extended)
-    LEFT = 'left'                # Flat hand tilted left
-    RIGHT = 'right'              # Flat hand tilted right
+    LEFT = 'left'                # Thumb pointing left
+    RIGHT = 'right'              # Thumb pointing right
+    RESET = 'reset'              # Peace sign (index + middle up)
     
     def __init__(self):
         """Initialize gesture classifier"""
@@ -33,7 +44,8 @@ class GestureClassifier:
             4: self.LAND,
             5: self.STOP,
             6: self.LEFT,
-            7: self.RIGHT
+            7: self.RIGHT,
+            8: self.RESET
         }
         
         # Reverse mapping
@@ -42,7 +54,7 @@ class GestureClassifier:
         # Classification statistics
         self.classification_counts = {gesture: 0 for gesture in self.gesture_labels.values()}
         
-        logging.info("GestureClassifier initialized with 8 precise gestures")
+        logging.info("GestureClassifier initialized with 9 precise gestures")
     
     def classify(self, features: Dict) -> Tuple[Optional[str], float]:
         """
@@ -72,90 +84,113 @@ class GestureClassifier:
         pitch = palm_orientation['pitch']  # Up/Down tilt
         roll = palm_orientation['roll']    # Rotation
         
-        # Palm facing direction (more reliable than pitch/yaw alone)
+        # Palm facing direction
         palm_facing_camera = palm_normal.get('facing_camera', False)
         palm_facing_away = palm_normal.get('facing_away', False)
         
         # Priority-based gesture detection (most specific to least specific)
         
         # 1. LAND (👌 OK Sign - Thumb and Index forming circle, other fingers extended)
-        # Most specific - check first
         thumb_index_dist = finger_distances.get('thumb_index_distance', 1.0)
-        if thumb_ext and index_ext and thumb_index_dist < 0.07:  # Tips close together
-            # Check if other 3 fingers are extended
+        if thumb_ext and index_ext and thumb_index_dist < 0.07:
             if middle_ext and ring_ext and pinky_ext:
                 self._update_count(self.LAND)
                 return self.LAND, 0.95
         
-        # 2. BACK (👊 Closed Fist - Back of hand facing camera)
-        # All fingers curled, no fingers extended
-        # Enhanced: Also check palm is facing away from camera
-        if extended_count == 0:
-            # More confident if palm is clearly facing away
-            confidence = 0.98 if palm_facing_away else 0.95
-            self._update_count(self.BACK)
-            return self.BACK, confidence
+        # 2. RESET (✌️ Peace Sign - Index + Middle finger up, others closed)
+        # Must detect BEFORE other single-finger gestures
+        if index_ext and middle_ext and not ring_ext and not pinky_ext:
+            # Check fingers are pointing upward
+            if hand_direction['y'] < -0.25 or pitch < -15:
+                # Thumb should be closed/not prominently extended
+                if not thumb_ext or (thumb_ext and abs(thumb_direction['y']) < 0.3):
+                    self._update_count(self.RESET)
+                    return self.RESET, 0.94
         
-        # 3. LEFT (✊ Fist with thumb pointing left)
-        # Closed fist with thumb extended, pointing left
-        if extended_count == 1 and thumb_ext:
-            if not index_ext and not middle_ext and not ring_ext and not pinky_ext:
-                # Thumb pointing left (negative X direction)
-                if thumb_direction['x'] < -0.4 or yaw < -35:
-                    self._update_count(self.LEFT)
-                    return self.LEFT, 0.93
+        # 3-6. THUMB GESTURES: GO_FORWARD, BACK, LEFT, RIGHT
+        # All require: thumb extended, other fingers closed
+        # Differentiation is based on DOMINANT AXIS of thumb direction
+        if thumb_ext and not index_ext and not middle_ext and not ring_ext and not pinky_ext:
+            
+            # Get absolute values to determine dominant direction
+            thumb_x = thumb_direction['x']  # Positive = right, Negative = left
+            thumb_y = thumb_direction['y']  # Positive = down, Negative = up
+            abs_x = abs(thumb_x)
+            abs_y = abs(thumb_y)
+            
+            # Determine dominant axis - X (left/right) vs Y (up/down)
+            # Use a ratio to ensure clear differentiation
+            x_dominant = abs_x > abs_y * 1.2  # X must be 20% stronger to be dominant
+            y_dominant = abs_y > abs_x * 1.2  # Y must be 20% stronger to be dominant
+            
+            # LEFT (👈 Thumb pointing left)
+            # Requires: X is dominant AND negative (pointing left)
+            if x_dominant and thumb_x < -0.3:
+                self._update_count(self.LEFT)
+                return self.LEFT, 0.94
+            
+            # RIGHT (👉 Thumb pointing right)
+            # Requires: X is dominant AND positive (pointing right)
+            if x_dominant and thumb_x > 0.3:
+                self._update_count(self.RIGHT)
+                return self.RIGHT, 0.94
+            
+            # GO_FORWARD (👍 Thumbs Up)
+            # Requires: Y is dominant AND negative (pointing up)
+            if y_dominant and thumb_y < -0.3:
+                self._update_count(self.GO_FORWARD)
+                return self.GO_FORWARD, 0.95
+            
+            # BACK (👎 Thumbs Down)
+            # Requires: Y is dominant AND positive (pointing down)
+            if y_dominant and thumb_y > 0.3:
+                self._update_count(self.BACK)
+                return self.BACK, 0.95
+            
+            # Fallback for edge cases where direction isn't clearly dominant
+            # Use stricter thresholds
+            if thumb_x < -0.45:  # Strong left
+                self._update_count(self.LEFT)
+                return self.LEFT, 0.88
+            if thumb_x > 0.45:  # Strong right
+                self._update_count(self.RIGHT)
+                return self.RIGHT, 0.88
+            if thumb_y < -0.45:  # Strong up
+                self._update_count(self.GO_FORWARD)
+                return self.GO_FORWARD, 0.88
+            if thumb_y > 0.45:  # Strong down
+                self._update_count(self.BACK)
+                return self.BACK, 0.88
         
-        # 4. RIGHT (✊ Fist with thumb pointing right)
-        # Closed fist with thumb extended, pointing right
-        if extended_count == 1 and thumb_ext:
-            if not index_ext and not middle_ext and not ring_ext and not pinky_ext:
-                # Thumb pointing right (positive X direction)
-                if thumb_direction['x'] > 0.4 or yaw > 35:
-                    self._update_count(self.RIGHT)
-                    return self.RIGHT, 0.93
-        
-        # 5. UP (👆 Index finger pointing up)
-        # Index finger extended upward, palm facing forward/upward
-        if extended_count == 1 and index_ext:
+        # 7. UP (☝️ Index finger pointing up - only index extended, thumb closed)
+        if index_ext and not thumb_ext and not middle_ext and not ring_ext and not pinky_ext:
             # Hand should be pointing upward
-            if hand_direction['y'] < -0.4 or pitch < -30:
+            if hand_direction['y'] < -0.35 or pitch < -25:
                 self._update_count(self.UP)
                 return self.UP, 0.94
         
-        # Alternative UP - index and maybe thumb
-        if extended_count <= 2 and index_ext and not middle_ext:
-            if hand_direction['y'] < -0.4 or pitch < -30:
+        # Alternative UP - index extended, thumb slightly out but index clearly pointing up
+        if index_ext and not middle_ext and not ring_ext and not pinky_ext:
+            if hand_direction['y'] < -0.45 or pitch < -35:
                 self._update_count(self.UP)
-                return self.UP, 0.90
+                return self.UP, 0.88
         
-        # 6. GO_FORWARD (✌️ Two fingers pointing up - Peace/Victory sign)
-        # Index and middle fingers extended upward, ring and pinky closed
-        if extended_count == 2 and index_ext and middle_ext:
-            if not ring_ext and not pinky_ext:
-                # Fingers should be pointing upward
-                if hand_direction['y'] < -0.3 or pitch < -20:
-                    self._update_count(self.GO_FORWARD)
-                    return self.GO_FORWARD, 0.95
-        
-        # Alternative GO_FORWARD with thumb
-        if extended_count == 3 and index_ext and middle_ext and thumb_ext:
-            if not ring_ext and not pinky_ext:
-                if hand_direction['y'] < -0.3 or pitch < -20:
-                    self._update_count(self.GO_FORWARD)
-                    return self.GO_FORWARD, 0.92
-        
-        # 7. DOWN (👇 Hand pointing down)
-        # Palm facing downward, fingers pointing down
-        if extended_count >= 1:
-            if pitch > 40 or hand_direction['y'] > 0.4:  # Tilted down significantly
+        # 8. DOWN (👇 Index finger pointing down - only index extended downward, thumb closed)
+        if index_ext and not thumb_ext and not middle_ext and not ring_ext and not pinky_ext:
+            # Hand should be pointing downward
+            if hand_direction['y'] > 0.35 or pitch > 25:
                 self._update_count(self.DOWN)
-                return self.DOWN, 0.91
+                return self.DOWN, 0.94
         
-        # 8. STOP (✋ Open Palm with fingers spread)
-        # All fingers extended AND clearly spread apart
+        # Alternative DOWN - index extended pointing down
+        if index_ext and not middle_ext and not ring_ext and not pinky_ext:
+            if hand_direction['y'] > 0.45 or pitch > 35:
+                self._update_count(self.DOWN)
+                return self.DOWN, 0.88
+        
+        # 9. STOP (🖐 Open Palm with fingers spread)
         if extended_count >= 4 and index_ext and middle_ext and ring_ext and pinky_ext:
-            # STOP requires wider finger spread
-            if finger_spread > 0.15:  # Much wider spread required
+            if finger_spread > 0.15:
                 self._update_count(self.STOP)
                 return self.STOP, 0.96
         
@@ -170,14 +205,15 @@ class GestureClassifier:
     def get_gesture_description(self, gesture: str) -> str:
         """Get human-readable description of gesture"""
         descriptions = {
-            self.UP: "👆 Up - Index finger pointing upward (Increase altitude)",
-            self.DOWN: "👇 Down - Palm facing downward (Decrease altitude)",
-            self.BACK: "👊 Back - Closed fist, back of hand facing camera (Move backward)",
-            self.GO_FORWARD: "✌️ Go Forward - Two fingers pointing up (Peace sign, Move forward)",
-            self.LAND: "👌 Land - Thumb & index forming circle (Land)",
-            self.STOP: "🖐 Stop - Open palm with fingers spread wide (Hover/Stop)",
-            self.LEFT: "✊ Left - Closed fist with thumb pointing left (Move left)",
-            self.RIGHT: "✊ Right - Closed fist with thumb pointing right (Move right)"
+            self.UP: "☝️ Up - Index finger pointing up (thumb closed) - Increase altitude",
+            self.DOWN: "👇 Down - Index finger pointing down (thumb closed) - Decrease altitude",
+            self.BACK: "👎 Back - Thumbs down - Move backward",
+            self.GO_FORWARD: "👍 Go Forward - Thumbs up - Move forward",
+            self.LAND: "👌 Land - Thumb & index forming circle - Land drone",
+            self.STOP: "🖐 Stop - Open palm with fingers spread wide - Hover/Stop",
+            self.LEFT: "👈 Left - Thumb pointing left (fist closed) - Move left",
+            self.RIGHT: "👉 Right - Thumb pointing right (fist closed) - Move right",
+            self.RESET: "✌️ Reset - Peace sign (index + middle up) - Reset drone position"
         }
         return descriptions.get(gesture, "Unknown gesture")
     
